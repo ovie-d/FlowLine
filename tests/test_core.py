@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from core.compare import compare
+from core.compare import compare, improvement_round
 from core.config import (
     BASELINE_COUNT,
     CONSEQUENCE_HEAVY,
@@ -39,8 +39,8 @@ def test_seed_md5():
 
 def test_corridor_count_after_cleaning():
     _df, report = load_incidents()
-    # Alias merges + junk snaps → ~111–112 corridors on this seed.
-    assert 108 <= report["corridors_after"] <= 115
+    # "Edmonton & Sherwood Park" kept as its own corridor on purpose.
+    assert report["corridors_after"] == 112
     assert report["corridors_before"] == 128
 
 
@@ -124,10 +124,26 @@ def test_jenner_rises_under_weighted():
     count_ranks = {r["corridor"]: r["rank"] for r in score(BASELINE_COUNT, top=50)}
     weighted = {r["corridor"]: r["rank"] for r in score(DEFAULT, top=50)}
     assert "Jenner" in count_ranks and "Jenner" in weighted
-    assert weighted["Jenner"] < count_ranks["Jenner"]
+    assert count_ranks["Jenner"] > weighted["Jenner"]
+    assert count_ranks["Jenner"] == 26
+    assert weighted["Jenner"] == 12
+
+
+def test_improvement_round_stages_and_yardstick():
+    result = improvement_round(top=15)
+    json.dumps(result)
+    names = [s["stage"] for s in result["stages"]]
+    assert names == ["baseline", "lab", "ours"]
+
+    totals = {s["serious_total"] for s in result["stages"]}
+    assert len(totals) == 1
+
+    by_stage = {s["stage"]: s for s in result["stages"]}
     assert (
-        score(DEFAULT, top=15)[11]["corridor"] == "Jenner" or weighted["Jenner"] <= 15
+        by_stage["ours"]["serious_captured"] >= by_stage["baseline"]["serious_captured"]
     )
+    assert "ours_heavy" in result
+    assert result["ours_heavy"]["stage"] == "ours_heavy"
 
 
 def test_bad_config_raises():

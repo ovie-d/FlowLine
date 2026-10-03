@@ -5,7 +5,21 @@ from __future__ import annotations
 from typing import Any
 
 from core.config import RiskConfig
+from core.data import load_incidents
 from core.scoring import score
+
+# Label-independent yardstick for the improvement round (not our severity labels).
+SERIOUS_INCIDENT_TYPES: frozenset[str] = frozenset(
+    {
+        "Adverse Environmental Effects",
+        "Explosion",
+        "Fatality",
+        "Release of Substance",
+        "Serious Injury (as defined in the OPR)",
+    }
+)
+
+_DEFAULT_WEIGHTS: dict[str, float] = {"high": 3.0, "medium": 1.5, "low": 1.0}
 
 
 def compare(
@@ -72,4 +86,96 @@ def compare(
         "movers": movers,
         "top_a": a,
         "top_b": b,
+    }
+
+
+def _stage_metrics(
+    *,
+    stage: str,
+    ranked: list[dict[str, Any]],
+    df,
+    serious_total: int,
+    baseline_names: set[str],
+) -> dict[str, Any]:
+    names = [r["corridor"] for r in ranked]
+    name_set = set(names)
+    subset = df[df["corridor"].isin(name_set)]
+    serious_captured = int(subset["incident_type"].isin(SERIOUS_INCIDENT_TYPES).sum())
+    incidents_covered = len(subset)
+    overlap = len(name_set & baseline_names) if baseline_names else len(name_set)
+    return {
+        "stage": stage,
+        "serious_captured": serious_captured,
+        "serious_total": serious_total,
+        "incidents_covered": incidents_covered,
+        "top5": names[:5],
+        "overlap_vs_baseline": overlap,
+    }
+
+
+def improvement_round(top: int = 15) -> dict[str, Any]:
+    """First result vs improved result under a label-independent yardstick.
+
+    Stages (same weights): count-only baseline → lab labels → our severity_v2.
+    ``ours_heavy`` is a sibling row linking to the high=6 slider flip.
+    """
+    weights = dict(_DEFAULT_WEIGHTS)
+    df, _report = load_incidents()
+    serious_total = int(df["incident_type"].isin(SERIOUS_INCIDENT_TYPES).sum())
+
+    cfg_baseline = RiskConfig(count_only=True, weights=weights)
+    cfg_lab = RiskConfig(label="lab", weights=weights)
+    cfg_ours = RiskConfig(label="v2", weights=weights)
+    cfg_heavy = RiskConfig(
+        label="v2",
+        weights={"high": 6.0, "medium": 1.5, "low": 1.0},
+    )
+
+    ranked_baseline = score(cfg_baseline, top=top)
+    ranked_lab = score(cfg_lab, top=top)
+    ranked_ours = score(cfg_ours, top=top)
+    ranked_heavy = score(cfg_heavy, top=top)
+
+    baseline_names = {r["corridor"] for r in ranked_baseline}
+
+    baseline = _stage_metrics(
+        stage="baseline",
+        ranked=ranked_baseline,
+        df=df,
+        serious_total=serious_total,
+        baseline_names=baseline_names,
+    )
+    lab = _stage_metrics(
+        stage="lab",
+        ranked=ranked_lab,
+        df=df,
+        serious_total=serious_total,
+        baseline_names=baseline_names,
+    )
+    ours = _stage_metrics(
+        stage="ours",
+        ranked=ranked_ours,
+        df=df,
+        serious_total=serious_total,
+        baseline_names=baseline_names,
+    )
+    ours_heavy = _stage_metrics(
+        stage="ours_heavy",
+        ranked=ranked_heavy,
+        df=df,
+        serious_total=serious_total,
+        baseline_names=baseline_names,
+    )
+
+    summary = (
+        f"Baseline captured {baseline['serious_captured']}/{serious_total} "
+        f"serious events; ours captures {ours['serious_captured']}/{serious_total} "
+        f"while covering fewer incidents."
+    )
+
+    return {
+        "weights": weights,
+        "stages": [baseline, lab, ours],
+        "ours_heavy": ours_heavy,
+        "summary": summary,
     }

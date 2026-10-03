@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from core.compare import compare
+from core.compare import compare, improvement_round
 from core.config import (
     BASELINE_COUNT,
     CONSEQUENCE_HEAVY,
@@ -11,6 +11,43 @@ from core.config import (
 )
 from core.data import load_incidents
 from core.scoring import score
+
+
+def _print_overlap(label: str, result: dict) -> None:
+    print(f"Overlap {label}: {result['overlap']}/15")
+    print(f"  entered={result['entered']}")
+    print(f"  dropped={result['dropped']}")
+
+
+def _jenner_line() -> str:
+    count_rows = score(BASELINE_COUNT, top=100)
+    weighted_rows = score(DEFAULT, top=100)
+    count = next(r for r in count_rows if r["corridor"] == "Jenner")
+    weighted = next(r for r in weighted_rows if r["corridor"] == "Jenner")
+    return (
+        f"Jenner: count-only #{count['rank']} -> weighted #{weighted['rank']} "
+        f"({weighted['n']} incidents, both high; confidence={weighted['confidence']})"
+    )
+
+
+def _print_improvement_round() -> None:
+    round_ = improvement_round(top=15)
+    print("\n=== Improvement round (same weights, label-independent yardstick) ===")
+    for stage in round_["stages"]:
+        top5 = ", ".join(stage["top5"])
+        print(
+            f"  {stage['stage']:<10} serious {stage['serious_captured']}/"
+            f"{stage['serious_total']}  incidents {stage['incidents_covered']}  "
+            f"top5: {top5}"
+        )
+    heavy = round_["ours_heavy"]
+    top5 = ", ".join(heavy["top5"])
+    print(
+        f"  {heavy['stage']:<10} serious {heavy['serious_captured']}/"
+        f"{heavy['serious_total']}  incidents {heavy['incidents_covered']}  "
+        f"top5: {top5}"
+    )
+    print(f"  -> {round_['summary']}")
 
 
 def run() -> None:
@@ -64,15 +101,18 @@ def run() -> None:
     # Step 4 — vs count-only; raise high weight; overlap again
     print("\n=== Step 4: Overlap vs count-only; heavier high weight ===")
     vs_count = compare(BASELINE_COUNT, DEFAULT, top=15)
-    print(f"Overlap count-only vs weighted (high=3): {vs_count['overlap']}/15")
+    _print_overlap("count-only vs weighted (high=3)", vs_count)
     vs_heavy = compare(DEFAULT, CONSEQUENCE_HEAVY, top=15)
-    print(f"Overlap weighted (high=3) vs heavy (high=6): {vs_heavy['overlap']}/15")
+    _print_overlap("weighted (high=3) vs heavy (high=6)", vs_heavy)
     low = score(LOW_CONSEQUENCE, top=1)[0]
     heavy = score(CONSEQUENCE_HEAVY, top=1)[0]
     print(
         f"Flip check: low-consequence #1={low['corridor']}; "
         f"heavy #1={heavy['corridor']}"
     )
+    print(_jenner_line())
+
+    _print_improvement_round()
 
     # Step 5 — three corridors that rose or fell, with reasons
     print("\n=== Step 5: Three corridors that moved (count-only -> heavy) ===")
