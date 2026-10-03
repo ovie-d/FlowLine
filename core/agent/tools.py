@@ -1,0 +1,233 @@
+"""Agent tools — thin wrappers over core. Never invent numbers."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import replace
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from core.assumptions import get_assumptions
+from core.compare import compare as compare_configs
+from core.config import RiskConfig
+from core.scoring import explain_corridor, score
+
+DECISIONS_PATH = (
+    Path(__file__).resolve().parent.parent.parent / "inspection_decisions.json"
+)
+
+VALID_ACTIONS = frozenset({"inspect", "escalate", "defer"})
+
+
+def _config_from_overrides(overrides: dict[str, Any] | None) -> RiskConfig:
+    cfg = RiskConfig()
+    if not overrides:
+        return cfg
+    allowed = {
+        "weights",
+        "label",
+        "half_life_years",
+        "include_facility_events",
+        "min_incidents_confident",
+        "gas_high_m3",
+        "liquid_high_m3",
+        "count_only",
+    }
+    kwargs: dict[str, Any] = {}
+    for k, v in overrides.items():
+        if k in allowed:
+            kwargs[k] = v
+        elif k == "high":
+            weights = dict(cfg.weights)
+            weights["high"] = float(v)
+            kwargs["weights"] = weights
+    return replace(cfg, **kwargs) if kwargs else cfg
+
+
+def get_ranking(
+    config_overrides: dict[str, Any] | None = None, top: int = 15
+) -> list[dict]:
+    """Ranked corridors under a given policy."""
+    cfg = _config_from_overrides(config_overrides)
+    return score(cfg, top=top)
+
+
+def explain_corridor_tool(
+    name: str, config_overrides: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Likelihood vs consequence, incident types, causes, drivers."""
+    cfg = _config_from_overrides(config_overrides)
+    return explain_corridor(name, cfg)
+
+
+def compare_tool(
+    a: dict[str, Any] | None = None,
+    b: dict[str, Any] | None = None,
+    top: int = 15,
+) -> dict[str, Any]:
+    """Overlap + movers with reasons between two configs."""
+    cfg_a = _config_from_overrides(a)
+    cfg_b = _config_from_overrides(b)
+    result = compare_configs(cfg_a, cfg_b, top=top)
+    # Compact for the model: drop full top lists' drivers noise.
+    compact_movers = result["movers"][:12]
+    return {
+        "overlap": result["overlap"],
+        "entered": result["entered"],
+        "dropped": result["dropped"],
+        "movers": compact_movers,
+        "top_a": [
+            {
+                "rank": r["rank"],
+                "corridor": r["corridor"],
+                "score": r["score"],
+                "n": r["n"],
+                "n_high": r["n_high"],
+            }
+            for r in result["top_a"]
+        ],
+        "top_b": [
+            {
+                "rank": r["rank"],
+                "corridor": r["corridor"],
+                "score": r["score"],
+                "n": r["n"],
+                "n_high": r["n_high"],
+            }
+            for r in result["top_b"]
+        ],
+    }
+
+
+def get_assumptions_tool() -> list[dict[str, Any]]:
+    return get_assumptions()
+
+
+def log_decision(
+    corridor: str,
+    action: str,
+    priority: str,
+    reason: str,
+) -> dict[str, Any]:
+    """Append a planner decision. Only call on explicit user request."""
+    action_l = action.strip().lower()
+    if action_l not in VALID_ACTIONS:
+        return {
+            "error": f"action must be one of {sorted(VALID_ACTIONS)}, got {action!r}"
+        }
+    entry = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "corridor": corridor,
+        "action": action_l,
+        "priority": priority,
+        "reason": reason,
+    }
+    existing: list[dict[str, Any]] = []
+    if DECISIONS_PATH.exists():
+        try:
+            existing = json.loads(DECISIONS_PATH.read_text())
+            if not isinstance(existing, list):
+                existing = []
+        except json.JSONDecodeError:
+            existing = []
+    existing.append(entry)
+    DECISIONS_PATH.write_text(json.dumps(existing, indent=2))
+    return {"ok": True, "logged": entry}
+
+
+TOOL_FUNCTIONS = {
+    "get_ranking": get_ranking,
+    "explain_corridor": explain_corridor_tool,
+    "compare": compare_tool,
+    "get_assumptions": get_assumptions_tool,
+    "log_decision": log_decision,
+}
+
+TOOL_SCHEMAS: list[dict[str, Any]] = [
+    {
+        "name": "get_ranking",
+        "description": (
+            "Return the top ranked pipeline corridors under a risk policy. "
+            'Pass config_overrides such as {"high": 6} or {"count_only": true}.'
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "config_overrides": {
+                    "type": "object",
+                    "description": "Optional RiskConfig field overrides or {high: number}.",
+                },
+                "top": {
+                    "type": "integer",
+                    "description": "How many corridors to return.",
+                    "default": 15,
+                },
+            },
+        },
+    },
+    {
+        "name": "explain_corridor",
+        "description": (
+            "Explain one corridor: likelihood vs consequence, drivers, recent incidents, causes."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Corridor name, e.g. Sherwood Park",
+                },
+                "config_overrides": {"type": "object"},
+            },
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "compare",
+        "description": "Compare two risk policies: overlap, entered, dropped, movers with reasons.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "a": {
+                    "type": "object",
+                    "description": "Config overrides for policy A (e.g. count_only).",
+                },
+                "b": {
+                    "type": "object",
+                    "description": "Config overrides for policy B (e.g. high=6).",
+                },
+                "top": {"type": "integer", "default": 15},
+            },
+        },
+    },
+    {
+        "name": "get_assumptions",
+        "description": "List live modeling assumptions with validation status and evidence.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "log_decision",
+        "description": (
+            "Record the planner's Monday decision: inspect / escalate / defer. "
+            "Only call when the user explicitly asks to log a decision."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "corridor": {"type": "string"},
+                "action": {"type": "string", "enum": ["inspect", "escalate", "defer"]},
+                "priority": {"type": "string", "description": "e.g. P1"},
+                "reason": {"type": "string"},
+            },
+            "required": ["corridor", "action", "priority", "reason"],
+        },
+    },
+]
+
+
+def dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
+    fn = TOOL_FUNCTIONS.get(name)
+    if fn is None:
+        return {"error": f"Unknown tool: {name}"}
+    return fn(**arguments)
