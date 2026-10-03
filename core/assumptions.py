@@ -49,6 +49,16 @@ ASSUMPTIONS: list[dict[str, Any]] = [
         "evidence": "",
         "affects": ["corridor"],
     },
+    {
+        "id": "triage_escalate_min_high",
+        "statement": (
+            "Auto-triage escalates a corridor to P1 when it has at least 3 "
+            "high-consequence incidents and confidence is ok."
+        ),
+        "status": "unvalidated",
+        "evidence": "",
+        "affects": ["ESCALATE_MIN_HIGH"],
+    },
 ]
 
 

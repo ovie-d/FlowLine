@@ -2,22 +2,16 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import replace
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from core.assumptions import get_assumptions
 from core.compare import compare as compare_configs
 from core.config import RiskConfig
 from core.scoring import explain_corridor, score
-
-DECISIONS_PATH = (
-    Path(__file__).resolve().parent.parent.parent / "inspection_decisions.json"
-)
-
-VALID_ACTIONS = frozenset({"inspect", "escalate", "defer"})
+from core.storage import VALID_ACTIONS, append_decision
+from core.triage import draft_triage
 
 
 def _config_from_overrides(overrides: dict[str, Any] | None) -> RiskConfig:
@@ -42,7 +36,26 @@ def _config_from_overrides(overrides: dict[str, Any] | None) -> RiskConfig:
             weights = dict(cfg.weights)
             weights["high"] = float(v)
             kwargs["weights"] = weights
+        elif k == "medium":
+            weights = dict(kwargs.get("weights", cfg.weights))
+            weights["medium"] = float(v)
+            kwargs["weights"] = weights
+        elif k == "low":
+            weights = dict(kwargs.get("weights", cfg.weights))
+            weights["low"] = float(v)
+            kwargs["weights"] = weights
     return replace(cfg, **kwargs) if kwargs else cfg
+
+
+def _policy_from_config(cfg: RiskConfig) -> dict[str, Any]:
+    if cfg.count_only:
+        return {"count_only": True}
+    return {
+        "high": float(cfg.weights["high"]),
+        "medium": float(cfg.weights["medium"]),
+        "low": float(cfg.weights["low"]),
+        "label": cfg.label,
+    }
 
 
 def get_ranking(
@@ -70,7 +83,6 @@ def compare_tool(
     cfg_a = _config_from_overrides(a)
     cfg_b = _config_from_overrides(b)
     result = compare_configs(cfg_a, cfg_b, top=top)
-    # Compact for the model: drop full top lists' drivers noise.
     compact_movers = result["movers"][:12]
     return {
         "overlap": result["overlap"],
@@ -104,11 +116,22 @@ def get_assumptions_tool() -> list[dict[str, Any]]:
     return get_assumptions()
 
 
+def auto_triage(
+    config_overrides: dict[str, Any] | None = None, top: int = 15
+) -> dict[str, Any]:
+    """Draft escalate/inspect/defer for the top corridors. Does not write the log."""
+    cfg = _config_from_overrides(config_overrides)
+    return draft_triage(cfg, top=top)
+
+
 def log_decision(
     corridor: str,
     action: str,
     priority: str,
     reason: str,
+    policy: dict[str, Any] | None = None,
+    source: str = "planner",
+    config_overrides: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Append a planner decision. Only call on explicit user request."""
     action_l = action.strip().lower()
@@ -116,24 +139,23 @@ def log_decision(
         return {
             "error": f"action must be one of {sorted(VALID_ACTIONS)}, got {action!r}"
         }
-    entry = {
-        "ts": datetime.now(timezone.utc).isoformat(),
-        "corridor": corridor,
-        "action": action_l,
-        "priority": priority,
-        "reason": reason,
-    }
-    existing: list[dict[str, Any]] = []
-    if DECISIONS_PATH.exists():
-        try:
-            existing = json.loads(DECISIONS_PATH.read_text())
-            if not isinstance(existing, list):
-                existing = []
-        except json.JSONDecodeError:
-            existing = []
-    existing.append(entry)
-    DECISIONS_PATH.write_text(json.dumps(existing, indent=2))
-    return {"ok": True, "logged": entry}
+    cfg = _config_from_overrides(config_overrides)
+    entry_policy = policy if policy is not None else _policy_from_config(cfg)
+    try:
+        stored = append_decision(
+            {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "corridor": corridor,
+                "action": action_l,
+                "priority": priority,
+                "reason": reason,
+                "policy": entry_policy,
+                "source": source,
+            }
+        )
+    except ValueError as exc:
+        return {"error": str(exc)}
+    return {"ok": True, "logged": stored}
 
 
 TOOL_FUNCTIONS = {
@@ -141,6 +163,7 @@ TOOL_FUNCTIONS = {
     "explain_corridor": explain_corridor_tool,
     "compare": compare_tool,
     "get_assumptions": get_assumptions_tool,
+    "auto_triage": auto_triage,
     "log_decision": log_decision,
 }
 
@@ -207,10 +230,27 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
         "input_schema": {"type": "object", "properties": {}},
     },
     {
+        "name": "auto_triage",
+        "description": (
+            "Draft escalate/inspect/defer actions for the top corridors under a risk policy. "
+            "Does not write the decision log. Summarize drafts and ask the planner which to approve."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "config_overrides": {
+                    "type": "object",
+                    "description": "Optional RiskConfig overrides or {high: number}.",
+                },
+                "top": {"type": "integer", "default": 15},
+            },
+        },
+    },
+    {
         "name": "log_decision",
         "description": (
             "Record the planner's Monday decision: inspect / escalate / defer. "
-            "Only call when the user explicitly asks to log a decision."
+            "Only call when the user explicitly asks to log a decision for named corridors."
         ),
         "input_schema": {
             "type": "object",
@@ -219,6 +259,16 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                 "action": {"type": "string", "enum": ["inspect", "escalate", "defer"]},
                 "priority": {"type": "string", "description": "e.g. P1"},
                 "reason": {"type": "string"},
+                "policy": {
+                    "type": "object",
+                    "description": "Optional policy snapshot, e.g. {high: 6}.",
+                },
+                "source": {
+                    "type": "string",
+                    "enum": ["planner", "agent_triage"],
+                    "default": "planner",
+                },
+                "config_overrides": {"type": "object"},
             },
             "required": ["corridor", "action", "priority", "reason"],
         },
