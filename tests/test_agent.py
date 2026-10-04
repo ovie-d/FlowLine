@@ -95,12 +95,17 @@ def test_plain_english_reasons():
     jenner = next(d for d in result["drafts"] if d["corridor"] == "Jenner")
     assert jenner["reason"].startswith(LOW_CONFIDENCE_LABEL)
 
+    fort_mckay = next(d for d in result["drafts"] if d["corridor"] == "Fort McKay")
+    # Space after comma between type counts (on-screen copy).
+    assert "environmental effects (5), fires (2)" in fort_mckay["reason"]
+
     for d in result["drafts"]:
         assert d["reason"]
         assert re.search(r"\d", d["reason"])
         lowered = d["reason"].lower()
         for banned in BANNED_REASON_SNIPPETS:
             assert banned not in lowered, (d["corridor"], d["reason"], banned)
+        assert "),(" not in d["reason"].replace(" ", "")
 
 
 def test_confidence_label_on_explain():

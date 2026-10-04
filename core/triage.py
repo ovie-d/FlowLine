@@ -60,11 +60,10 @@ def _format_types(counts: Counter[str], top: int = 2) -> str:
         counts.items(),
         key=lambda kv: (-kv[1], TYPE_DISPLAY.get(kv[0], kv[0].lower())),
     )
-    parts = []
-    for raw, n in ranked[:top]:
-        label = TYPE_DISPLAY.get(raw, raw.lower())
-        parts.append(f"{label} ({n})")
-    return ", ".join(parts)
+    # Always ", " (space after comma) — this string is shown on screen.
+    return ", ".join(
+        f"{TYPE_DISPLAY.get(raw, raw.lower())} ({n})" for raw, n in ranked[:top]
+    )
 
 
 def _plain_reason(
