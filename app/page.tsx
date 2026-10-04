@@ -1058,11 +1058,6 @@ export default function Home() {
             Alberta Pipeline Inspection Prioritization
           </h1>
 
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-            Identify which pipeline corridors warrant investigation first,
-            why they ranked highly, and how strong the supporting evidence is.
-          </p>
-
           <div className="mt-5 max-w-4xl rounded-lg border border-blue-800/60 bg-blue-950/40 px-4 py-3 text-sm leading-6 text-blue-200">
 
             <strong>
@@ -1110,12 +1105,6 @@ export default function Home() {
             <h2 className="text-xl font-bold text-white">
               Inspection Risk Model
             </h2>
-
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-              Incident count alone does not determine priority. Severity,
-              pipeline relevance, frequency, recency, release volume, and
-              exposure are considered separately.
-            </p>
 
           </div>
 
@@ -1173,11 +1162,7 @@ export default function Home() {
                   Adjust Risk Weights
                 </h3>
 
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-                  Change the importance of each factor to test different
-                  inspection strategies. The Top 15 rankings automatically
-                  recalculate and reorder.
-                </p>
+      
 
               </div>
 
