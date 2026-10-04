@@ -1,7 +1,12 @@
 "use client";
 
 import type { CorridorDetail, RankingRow } from "@/lib/types";
-import { formatDate, sevColor } from "@/lib/format";
+import {
+  driverSeverity,
+  formatDate,
+  formatDriverLabel,
+} from "@/lib/format";
+import { CorridorMapView } from "@/components/map/CorridorMapView";
 
 type Tab = "map" | "details";
 
@@ -14,9 +19,6 @@ type Props = {
   detailLoading: boolean;
   onSelect: (corridor: string) => void;
 };
-
-const AB_POLYGON =
-  "0.00,0.00 100.00,0.00 100.00,100.00 59.40,100.00 53.00,90.91 46.00,83.64 37.00,77.27 27.00,70.91 17.00,64.55 8.00,59.09 0.00,55.45";
 
 export function MapDetailsCard({
   tab,
@@ -31,13 +33,23 @@ export function MapDetailsCard({
 
   return (
     <section
-      className="rounded-xl border border-[#E3E3DE] bg-white"
-      style={{ flex: "0 0 320px", maxWidth: 320, padding: 14 }}
+      className="flex min-h-0 flex-col rounded-xl border border-[#E3E3DE] bg-white"
+      style={{
+        flex: "0 0 320px",
+        width: 320,
+        maxWidth: 320,
+        minHeight: 0,
+        height: "100%",
+        padding: 14,
+        boxSizing: "border-box",
+        overflow: "hidden",
+      }}
     >
       <div
         role="tablist"
         aria-label="Map and corridor details"
         className="mb-3 flex gap-1 rounded-lg bg-[#F2F2EE] p-[3px]"
+        style={{ flex: "0 0 auto" }}
       >
         <TabButton
           selected={tab === "map"}
@@ -51,19 +63,24 @@ export function MapDetailsCard({
         />
       </div>
 
-      {tab === "map" ? (
-        <CorridorMap
-          ranking={ranking}
-          selected={selected}
-          onSelect={onSelect}
-        />
-      ) : (
-        <CorridorDetails
-          detail={detail}
-          loading={detailLoading}
-          selected={selected}
-        />
-      )}
+      <div
+        className="min-h-0"
+        style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}
+      >
+        {tab === "map" ? (
+          <CorridorMapView
+            ranking={ranking}
+            selected={selected}
+            onSelect={onSelect}
+          />
+        ) : (
+          <CorridorDetails
+            detail={detail}
+            loading={detailLoading}
+            selected={selected}
+          />
+        )}
+      </div>
     </section>
   );
 }
@@ -97,109 +114,6 @@ function TabButton({
   );
 }
 
-function CorridorMap({
-  ranking,
-  selected,
-  onSelect,
-}: {
-  ranking: RankingRow[];
-  selected: string | null;
-  onSelect: (corridor: string) => void;
-}) {
-  const maxScore = ranking[0]?.score || 1;
-  const withCoords = ranking.filter(
-    (r) =>
-      r.lat != null &&
-      r.lon != null &&
-      Number.isFinite(r.lat) &&
-      Number.isFinite(r.lon),
-  );
-  // Draw lower ranks first so top ranks sit on top
-  const dots = [...withCoords].reverse();
-
-  return (
-    <div>
-      <div
-        className="relative w-full rounded-lg bg-[#FAFAF8]"
-        style={{ aspectRatio: "10 / 15" }}
-      >
-        <svg
-          viewBox="0 0 100 100"
-          preserveAspectRatio="none"
-          className="absolute inset-0 h-full w-full"
-          aria-hidden
-        >
-          <polygon
-            points={AB_POLYGON}
-            fill="#EFEFEB"
-            stroke="#BDBDB6"
-            strokeWidth="0.4"
-            vectorEffect="non-scaling-stroke"
-          />
-        </svg>
-        <div
-          className="absolute left-2.5 top-2.5 text-[11px] uppercase tracking-[0.1em] text-[#6B6F75]"
-        >
-          Alberta
-        </div>
-        {dots.map((row) => {
-          const size = Math.round(14 + (26 * row.score) / maxScore);
-          const left = (((row.lon as number) + 120) / 10) * 100;
-          const top = ((60 - (row.lat as number)) / 11) * 100;
-          const isSel = selected === row.corridor;
-          return (
-            <button
-              key={row.corridor}
-              type="button"
-              aria-label={`${row.corridor}, rank ${row.rank}`}
-              onClick={() => onSelect(row.corridor)}
-              className="absolute p-0 font-mono text-[11px] font-semibold text-white"
-              style={{
-                left: `${left.toFixed(2)}%`,
-                top: `${top.toFixed(2)}%`,
-                width: size,
-                height: size,
-                transform: "translate(-50%, -50%)",
-                borderRadius: "50%",
-                border: "2px solid #FFFFFF",
-                background: sevColor(row.n_high),
-                boxShadow: isSel
-                  ? "0 0 0 3px #1D4ED8"
-                  : "0 1px 3px rgba(0,0,0,0.25)",
-                cursor: "pointer",
-              }}
-            >
-              {row.rank <= 5 ? row.rank : ""}
-            </button>
-          );
-        })}
-      </div>
-      <div className="mt-3 flex flex-wrap gap-3.5 text-[12px] text-[#5A5F66]">
-        <LegendDot color="#A8370A" label="3+ serious" />
-        <LegendDot color="#E0904A" label="1–2 serious" />
-        <LegendDot color="#9C9FA5" label="minor only" />
-      </div>
-      {withCoords.length === 0 && (
-        <p className="mt-2 text-[12px] text-[#5A5F66]">
-          No lat/lon on ranked corridors yet.
-        </p>
-      )}
-    </div>
-  );
-}
-
-function LegendDot({ color, label }: { color: string; label: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span
-        className="inline-block rounded-full"
-        style={{ width: 10, height: 10, background: color }}
-      />
-      {label}
-    </span>
-  );
-}
-
 function CorridorDetails({
   detail,
   loading,
@@ -229,7 +143,9 @@ function CorridorDetails({
 
   const total = detail.n_high + detail.n_medium + detail.n_low || 1;
   const cons =
-    detail.n > 0 ? (detail.score / detail.n).toFixed(2) : detail.consequence?.toFixed?.(2) ?? "—";
+    detail.n > 0
+      ? (detail.score / detail.n).toFixed(2)
+      : (detail.consequence?.toFixed?.(2) ?? "—");
 
   return (
     <div className="flex flex-col gap-3">
@@ -296,15 +212,18 @@ function CorridorDetails({
         Top drivers
       </div>
       <ul>
-        {(detail.drivers ?? []).slice(0, 5).map((d, i) => (
-          <li
-            key={`${d}-${i}`}
-            className="flex justify-between gap-2 border-t border-[#EFEFEB] pt-2 text-[13px]"
-          >
-            <span>{typeof d === "string" ? d : String(d)}</span>
-            <SeverityChip nHigh={detail.n_high} />
-          </li>
-        ))}
+        {(detail.drivers ?? []).slice(0, 5).map((d, i) => {
+          const sev = driverSeverity(d.weight);
+          return (
+            <li
+              key={`${d.type ?? "d"}-${d.date ?? i}-${i}`}
+              className="flex justify-between gap-2 border-t border-[#EFEFEB] pt-2 text-[13px]"
+            >
+              <span>{formatDriverLabel(d)}</span>
+              <DriverSeverityChip sev={sev} />
+            </li>
+          );
+        })}
       </ul>
 
       <div className="text-[12px] text-[#5A5F66]">
@@ -314,8 +233,7 @@ function CorridorDetails({
   );
 }
 
-function SeverityChip({ nHigh }: { nHigh: number }) {
-  const sev = nHigh >= 1 ? (nHigh >= 3 ? "high" : "medium") : "low";
+function DriverSeverityChip({ sev }: { sev: "high" | "medium" | "low" }) {
   const style =
     sev === "high"
       ? { background: "#A8370A", color: "#FFFFFF" }

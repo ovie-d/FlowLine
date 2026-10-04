@@ -3,16 +3,23 @@
 IEEE YP Industry Hackathon · Energy & Infrastructure  
 **Pipeline Incident Risk Agent** — Next.js dashboard + FastAPI + `core/` scoring
 
-## Frontend (Next.js)
+## Setup
+
+### Frontend (Next.js)
 
 ```bash
 npm install
-cp .env.example .env.local   # NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
+cp .env.example .env.local
+# edit .env.local:
+#   NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
+#   NEXT_PUBLIC_MAPBOX_TOKEN=pk.…   # paste your Mapbox public token
 npm run dev
 # http://localhost:3000
 ```
 
-## Backend (FastAPI + core)
+Restart `npm run dev` after changing `.env.local`. Without a Mapbox token, the map tab uses the offline SVG view.
+
+### Backend (FastAPI + core)
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
