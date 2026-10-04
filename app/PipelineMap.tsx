@@ -1,23 +1,9 @@
 "use client";
 
-/*
-  ============================================================
-  IMPORTS
-  ============================================================
-
-  useEffect:
-  Runs code when the map first loads.
-
-  useState:
-  Stores the pipeline data after we download it.
-
-  React Leaflet:
-  Displays the actual interactive map.
-*/
-
 import { useEffect, useState } from "react";
 
 import {
+  CircleMarker,
   MapContainer,
   Polyline,
   Popup,
@@ -27,55 +13,63 @@ import {
 
 import "leaflet/dist/leaflet.css";
 
-
 /*
-  ============================================================
-  PIPELINE DATA TYPE
-  ============================================================
-
-  This describes the information we want to store
-  for each pipeline returned by the GIS service.
+============================================================
+TYPES
+============================================================
 */
 
+type RiskLevel = "Low" | "Moderate" | "High" | "Very High";
+
+type ConfidenceLevel = "Low" | "Moderate" | "High";
+
 type Pipeline = {
-  id: number;
+  id: string;
 
   licenceNumber: string | number | null;
-
   lineNumber: string | number | null;
 
   company: string | null;
-
   status: string | null;
-
   substance: string | null;
-
   diameter: string | number | null;
-
   material: string | null;
 
-  /*
-    Leaflet expects coordinates like:
-
-    [latitude, longitude]
-  */
   coordinates: [number, number][];
+
+  /*
+    These fields are ready for the incident/risk model.
+
+    Right now they are null because the GIS pipeline layer
+    itself does not provide our calculated risk information.
+
+    Later we will calculate these using the incident dataset.
+  */
+
+  riskScore: number | null;
+  riskLevel: RiskLevel | null;
+
+  confidence: ConfidenceLevel | null;
+
+  relevantEvents: number | null;
+
+  pipelineReleases: number | null;
+  facilityFires: number | null;
+  limitBreaches: number | null;
+  otherEvents: number | null;
+
+  seriousReleases: number | null;
+  recentEvents: number | null;
+
+  totalReleaseVolume: number | null;
+
+  primaryDriver: string | null;
 };
 
-
 /*
-  ============================================================
-  ARCGIS GEOJSON TYPES
-  ============================================================
-
-  The GIS server sends us GeoJSON.
-
-  GeoJSON normally stores coordinates as:
-
-  [longitude, latitude]
-
-  This is backwards compared with Leaflet, so later
-  we will reverse them.
+============================================================
+GEOJSON TYPES
+============================================================
 */
 
 type GeoJSONFeature = {
@@ -108,228 +102,206 @@ type GeoJSONFeature = {
   };
 };
 
-
 type GeoJSONResponse = {
   type: "FeatureCollection";
-
   features: GeoJSONFeature[];
 };
 
-
 /*
-  ============================================================
-  PIPELINE GIS URL
-  ============================================================
-
-  This is the ArcGIS FeatureServer query endpoint.
-
-  Instead of manually typing coordinates, the website
-  requests geographic pipeline geometry.
+============================================================
+GIS API
+============================================================
 */
 
 const PIPELINE_API =
   "https://services9.arcgis.com/nUMfScOxh4qxkmsK/arcgis/rest/services/AERPipelines/FeatureServer/0/query";
 
-
 /*
-  ============================================================
-  HELPER FUNCTION
-  ============================================================
+============================================================
+COORDINATE CONVERSION
+============================================================
 
-  GeoJSON gives us:
+GeoJSON:
+[longitude, latitude]
 
-  [longitude, latitude]
-
-  Leaflet wants:
-
-  [latitude, longitude]
-
-  This function converts between the two.
+Leaflet:
+[latitude, longitude]
 */
 
 function convertCoordinates(
   coordinates: number[][]
 ): [number, number][] {
-  return coordinates.map((coordinate) => {
-    const longitude = coordinate[0];
-    const latitude = coordinate[1];
-
-    return [latitude, longitude];
-  });
+  return coordinates.map((coordinate) => [
+    coordinate[1],
+    coordinate[0],
+  ]);
 }
 
-
 /*
-  ============================================================
-  PIPELINE COLOUR
-  ============================================================
+============================================================
+RISK COLOUR
+============================================================
 
-  Right now the real GIS layer gives us pipeline information,
-  but it does NOT automatically give us your calculated
-  priority score.
+Eventually the pipeline colour represents calculated risk.
 
-  So for now we colour pipelines based on their status.
-
-  Later we can join incident data to these pipelines and
-  calculate your actual risk score.
+RED     = Very High
+ORANGE  = High
+YELLOW  = Moderate
+GREEN   = Low
+GREY    = Risk not calculated yet
 */
 
-function getPipelineColor(status: string | null) {
-  if (!status) {
-    return "#94a3b8";
+function getRiskColor(
+  riskLevel: RiskLevel | null
+) {
+  if (riskLevel === "Very High") {
+    return "#ef4444";
   }
 
-  const statusLower = status.toLowerCase();
-
-  /*
-    Operating pipelines are cyan.
-  */
-  if (
-    statusLower.includes("operating") ||
-    statusLower.includes("active")
-  ) {
-    return "#22d3ee";
+  if (riskLevel === "High") {
+    return "#f97316";
   }
 
-  /*
-    Abandoned pipelines are grey.
-  */
-  if (statusLower.includes("abandon")) {
-    return "#64748b";
+  if (riskLevel === "Moderate") {
+    return "#eab308";
   }
 
-  /*
-    Discontinued pipelines are orange.
-  */
-  if (
-    statusLower.includes("discontinued") ||
-    statusLower.includes("inactive")
-  ) {
-    return "#fb923c";
+  if (riskLevel === "Low") {
+    return "#22c55e";
   }
 
-  /*
-    Anything else gets blue.
-  */
-  return "#3b82f6";
+  return "#64748b";
 }
 
+/*
+============================================================
+CONFIDENCE STYLE
+============================================================
+
+Confidence is deliberately separate from risk.
+
+A pipeline can therefore be:
+
+HIGH RISK + LOW CONFIDENCE
+
+which is important when there are only a few severe incidents.
+*/
+
+function getConfidenceDash(
+  confidence: ConfidenceLevel | null
+) {
+  if (confidence === "Low") {
+    return "4 8";
+  }
+
+  if (confidence === "Moderate") {
+    return "8 5";
+  }
+
+  /*
+    High confidence = solid line.
+  */
+
+  return undefined;
+}
 
 /*
-  ============================================================
-  MAIN MAP COMPONENT
-  ============================================================
+============================================================
+EVENT MARKER SIZE
+============================================================
+
+Marker size represents amount of relevant evidence.
+
+This is NOT the risk score.
+
+More relevant events = larger marker.
+*/
+
+function getEvidenceMarkerSize(
+  events: number | null
+) {
+  if (!events) {
+    return 6;
+  }
+
+  return Math.min(
+    24,
+    6 + Math.sqrt(events) * 2.5
+  );
+}
+
+/*
+============================================================
+PIPELINE MIDPOINT
+============================================================
+
+Used to position the evidence marker.
+*/
+
+function getPipelineMidpoint(
+  coordinates: [number, number][]
+): [number, number] | null {
+  if (coordinates.length === 0) {
+    return null;
+  }
+
+  return coordinates[
+    Math.floor(coordinates.length / 2)
+  ];
+}
+
+/*
+============================================================
+MAIN COMPONENT
+============================================================
 */
 
 export default function PipelineMap() {
-  /*
-    pipelines
+  const [pipelines, setPipelines] =
+    useState<Pipeline[]>([]);
 
-    Stores all pipelines after they are downloaded.
-  */
-  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [loading, setLoading] =
+    useState(true);
 
+  const [error, setError] =
+    useState<string | null>(null);
 
-  /*
-    loading
-
-    Lets us tell the user that the pipeline information
-    is currently downloading.
-  */
-  const [loading, setLoading] = useState(true);
-
+  const [selectedPipeline, setSelectedPipeline] =
+    useState<Pipeline | null>(null);
 
   /*
-    error
-
-    Stores an error message if the API request fails.
-  */
-  const [error, setError] = useState<string | null>(null);
-
-
-  /*
-    ==========================================================
-    DOWNLOAD PIPELINE DATA
-    ==========================================================
-
-    useEffect runs when PipelineMap first appears.
+  ============================================================
+  LOAD PIPELINES
+  ============================================================
   */
 
   useEffect(() => {
     async function loadPipelines() {
       try {
         setLoading(true);
-
         setError(null);
 
+        const parameters =
+          new URLSearchParams({
+            where: "1=1",
 
-        /*
-          ====================================================
-          BUILD OUR ARCGIS QUERY
-          ====================================================
+            outFields:
+              "OBJECTID_1,OBJECTID,LICENCE_NO,LINE_NO,COMP_NAME,SEG_STATUS,SUBSTANCE1,OUT_DIAMET,PIP_MATERL",
 
-          where=1=1
+            returnGeometry: "true",
 
-          Means:
-          Give us all available records.
+            outSR: "4326",
 
-          outFields:
-          Specifies which information we want returned.
+            f: "geojson",
 
-          returnGeometry=true:
-          VERY IMPORTANT.
-
-          This tells ArcGIS to include the actual
-          pipeline coordinates.
-
-          outSR=4326:
-          Requests normal latitude/longitude coordinates.
-
-          f=geojson:
-          Requests GeoJSON instead of ArcGIS JSON.
-        */
-
-        const parameters = new URLSearchParams({
-          where: "1=1",
-
-          outFields:
-            "OBJECTID_1,OBJECTID,LICENCE_NO,LINE_NO,COMP_NAME,SEG_STATUS,SUBSTANCE1,OUT_DIAMET,PIP_MATERL",
-
-          returnGeometry: "true",
-
-          outSR: "4326",
-
-          f: "geojson",
-
-          /*
-            ArcGIS services normally limit how many
-            records can be returned in one request.
-
-            We request 2000 here.
-          */
-          resultRecordCount: "2000",
-        });
-
-
-        /*
-          Create the final URL.
-        */
+            resultRecordCount: "2000",
+          });
 
         const url =
           `${PIPELINE_API}?${parameters.toString()}`;
 
-
-        /*
-          Send the request.
-        */
-
-        const response = await fetch(url);
-
-
-        /*
-          If the server returns an error code,
-          stop here.
-        */
+        const response =
+          await fetch(url);
 
         if (!response.ok) {
           throw new Error(
@@ -337,95 +309,49 @@ export default function PipelineMap() {
           );
         }
 
-
-        /*
-          Convert the response into JavaScript.
-        */
-
         const data: GeoJSONResponse =
           await response.json();
 
-
-        /*
-          Make sure the response actually contains features.
-        */
-
         if (!data.features) {
           throw new Error(
-            "The GIS service did not return pipeline features."
+            "No pipeline features returned."
           );
         }
 
+        const convertedPipelines: Pipeline[] =
+          [];
 
         /*
-          ====================================================
-          CONVERT GIS FEATURES INTO OUR PIPELINE OBJECTS
-          ====================================================
+        ======================================================
+        CONVERT PIPELINE FEATURES
+        ======================================================
         */
 
-        const convertedPipelines: Pipeline[] = [];
+        data.features.forEach(
+          (feature, featureIndex) => {
+            if (!feature.geometry) {
+              return;
+            }
 
+            const properties =
+              feature.properties;
 
-        data.features.forEach((feature, featureIndex) => {
-          /*
-            Ignore anything without geometry.
-          */
+            const baseId =
+              properties.OBJECTID_1 ??
+              properties.OBJECTID ??
+              featureIndex;
 
-          if (!feature.geometry) {
-            return;
-          }
+            /*
+            --------------------------------------------------
+            Helper for creating our Pipeline object.
+            --------------------------------------------------
+            */
 
-
-          /*
-            Get the pipeline's properties.
-          */
-
-          const properties =
-            feature.properties;
-
-
-          /*
-            Create a unique ID.
-
-            Prefer the GIS OBJECTID.
-
-            If one isn't available, use the feature's
-            position in the returned array.
-          */
-
-          const id =
-            properties.OBJECTID_1 ??
-            properties.OBJECTID ??
-            featureIndex;
-
-
-          /*
-            ==================================================
-            LINESTRING
-            ==================================================
-
-            Most pipelines should be LineStrings.
-
-            Example:
-
-            [
-              [-114.01, 51.02],
-              [-113.98, 51.04],
-              [-113.95, 51.06]
-            ]
-          */
-
-          if (feature.geometry.type === "LineString") {
-            const rawCoordinates =
-              feature.geometry.coordinates as number[][];
-
-
-            const coordinates =
-              convertCoordinates(rawCoordinates);
-
-
-            convertedPipelines.push({
-              id,
+            const createPipeline = (
+              coordinates: [number, number][],
+              suffix: string
+            ): Pipeline => ({
+              id: `${baseId}-${suffix}`,
 
               licenceNumber:
                 properties.LICENCE_NO ?? null,
@@ -449,133 +375,126 @@ export default function PipelineMap() {
                 properties.PIP_MATERL ?? null,
 
               coordinates,
+
+              /*
+                IMPORTANT:
+
+                We are NOT inventing risk data.
+
+                These remain null until we join the
+                real incident dataset.
+              */
+
+              riskScore: null,
+              riskLevel: null,
+
+              confidence: null,
+
+              relevantEvents: null,
+
+              pipelineReleases: null,
+              facilityFires: null,
+              limitBreaches: null,
+              otherEvents: null,
+
+              seriousReleases: null,
+              recentEvents: null,
+
+              totalReleaseVolume: null,
+
+              primaryDriver: null,
             });
-          }
 
+            /*
+            --------------------------------------------------
+            LINESTRING
+            --------------------------------------------------
+            */
 
-          /*
-            ==================================================
-            MULTILINESTRING
-            ==================================================
+            if (
+              feature.geometry.type ===
+              "LineString"
+            ) {
+              const rawCoordinates =
+                feature.geometry
+                  .coordinates as number[][];
 
-            Some geographic features can contain several
-            separate line sections.
-
-            We create one pipeline object for each section.
-          */
-
-          if (
-            feature.geometry.type === "MultiLineString"
-          ) {
-            const lines =
-              feature.geometry.coordinates as number[][][];
-
-
-            lines.forEach((line, lineIndex) => {
               const coordinates =
-                convertCoordinates(line);
+                convertCoordinates(
+                  rawCoordinates
+                );
 
+              convertedPipelines.push(
+                createPipeline(
+                  coordinates,
+                  "0"
+                )
+              );
+            }
 
-              convertedPipelines.push({
-                /*
-                  Give each section its own ID.
-                */
-                id:
-                  Number(
-                    `${id}${lineIndex}`
-                  ),
+            /*
+            --------------------------------------------------
+            MULTILINESTRING
+            --------------------------------------------------
+            */
 
-                licenceNumber:
-                  properties.LICENCE_NO ?? null,
+            if (
+              feature.geometry.type ===
+              "MultiLineString"
+            ) {
+              const lines =
+                feature.geometry
+                  .coordinates as number[][][];
 
-                lineNumber:
-                  properties.LINE_NO ?? null,
+              lines.forEach(
+                (line, lineIndex) => {
+                  const coordinates =
+                    convertCoordinates(
+                      line
+                    );
 
-                company:
-                  properties.COMP_NAME ?? null,
-
-                status:
-                  properties.SEG_STATUS ?? null,
-
-                substance:
-                  properties.SUBSTANCE1 ?? null,
-
-                diameter:
-                  properties.OUT_DIAMET ?? null,
-
-                material:
-                  properties.PIP_MATERL ?? null,
-
-                coordinates,
-              });
-            });
+                  convertedPipelines.push(
+                    createPipeline(
+                      coordinates,
+                      String(lineIndex)
+                    )
+                  );
+                }
+              );
+            }
           }
-        });
+        );
 
-
-        /*
-          Store the converted pipelines in React state.
-
-          React automatically redraws the map after
-          this happens.
-        */
-
-        setPipelines(convertedPipelines);
+        setPipelines(
+          convertedPipelines
+        );
       } catch (err) {
-        /*
-          If anything goes wrong, print the full error
-          in the browser console.
-        */
-
         console.error(
           "Could not load pipeline data:",
           err
         );
 
-
-        /*
-          Show a readable error on the map.
-        */
-
         setError(
           "Pipeline data could not be loaded."
         );
       } finally {
-        /*
-          Whether the request worked or failed,
-          we're finished loading.
-        */
-
         setLoading(false);
       }
     }
 
-
-    /*
-      Actually run our function.
-    */
-
     loadPipelines();
   }, []);
 
-
   /*
-    ==========================================================
-    MAP
-    ==========================================================
+  ============================================================
+  MAP
+  ============================================================
   */
 
   return (
     <div className="relative">
 
-      {/*
-        ======================================================
-        LOADING MESSAGE
-        ======================================================
-
-        This floats above the map while pipeline data
-        is downloading.
-      */}
+      {/* LOADING */}
 
       {loading && (
         <div className="absolute left-1/2 top-4 z-[1000] -translate-x-1/2 rounded-lg border border-slate-600 bg-slate-900/95 px-4 py-2 text-sm text-slate-200 shadow-xl">
@@ -583,12 +502,7 @@ export default function PipelineMap() {
         </div>
       )}
 
-
-      {/*
-        ======================================================
-        ERROR MESSAGE
-        ======================================================
-      */}
+      {/* ERROR */}
 
       {error && (
         <div className="absolute left-1/2 top-4 z-[1000] -translate-x-1/2 rounded-lg border border-red-500/50 bg-red-950/95 px-4 py-2 text-sm text-red-200 shadow-xl">
@@ -596,15 +510,7 @@ export default function PipelineMap() {
         </div>
       )}
 
-
-      {/*
-        ======================================================
-        PIPELINE COUNT
-        ======================================================
-
-        Once loading finishes, show how many pipeline
-        line features were loaded.
-      */}
+      {/* PIPELINE COUNT */}
 
       {!loading && !error && (
         <div className="absolute left-4 top-4 z-[1000] rounded-lg border border-slate-600 bg-slate-900/90 px-3 py-2 text-xs text-slate-300 shadow-lg">
@@ -612,37 +518,60 @@ export default function PipelineMap() {
         </div>
       )}
 
+      {/* LEGEND */}
 
-      {/*
-        ======================================================
-        LEAFLET MAP
-        ======================================================
-      */}
+      <div className="absolute bottom-6 left-4 z-[1000] w-52 rounded-xl border border-slate-700 bg-slate-950/95 p-4 text-xs text-slate-300 shadow-xl">
+
+        <div className="mb-3 font-semibold text-white">
+          Inspection Risk
+        </div>
+
+        <div className="space-y-2">
+
+          <div className="flex items-center gap-2">
+            <span className="h-3 w-3 rounded-full bg-red-500" />
+            Very High
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="h-3 w-3 rounded-full bg-orange-500" />
+            High
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="h-3 w-3 rounded-full bg-yellow-500" />
+            Moderate
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="h-3 w-3 rounded-full bg-green-500" />
+            Low
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="h-3 w-3 rounded-full bg-slate-500" />
+            Not calculated
+          </div>
+
+        </div>
+
+        <div className="mt-4 border-t border-slate-700 pt-3 text-[11px] leading-4 text-slate-400">
+          Line colour = risk
+          <br />
+          Marker size = evidence
+          <br />
+          Dashed line = lower confidence
+        </div>
+
+      </div>
+
+      {/* MAP */}
 
       <MapContainer
-        /*
-          Start roughly around central Alberta.
-        */
         center={[53.3, -114.5]}
-
-        /*
-          Province-level zoom.
-        */
         zoom={5}
-
-        /*
-          Prevent users from zooming too far out.
-        */
         minZoom={4}
-
-        /*
-          Allow mouse-wheel zooming.
-        */
         scrollWheelZoom={true}
-
-        /*
-          Map size.
-        */
         style={{
           height: "600px",
           width: "100%",
@@ -650,193 +579,408 @@ export default function PipelineMap() {
         }}
       >
 
-        {/*
-          ====================================================
-          OPENSTREETMAP BASE MAP
-          ====================================================
-
-          This provides roads, cities, towns and other
-          geographic information underneath the pipelines.
-        */}
-
         <TileLayer
           attribution="&copy; OpenStreetMap contributors"
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-
         {/*
-          ====================================================
-          REAL PIPELINES
-          ====================================================
-
-          Loop through every pipeline downloaded from
-          the GIS service and draw it on the map.
+        ======================================================
+        PIPELINES
+        ======================================================
         */}
 
         {pipelines.map((pipeline) => {
-          /*
-            Determine line colour based on status.
-          */
-
           const color =
-            getPipelineColor(pipeline.status);
+            getRiskColor(
+              pipeline.riskLevel
+            );
 
+          const selected =
+            selectedPipeline?.id ===
+            pipeline.id;
+
+          const midpoint =
+            getPipelineMidpoint(
+              pipeline.coordinates
+            );
 
           return (
-            <Polyline
-              key={pipeline.id}
-
-              /*
-                These are the coordinates that came
-                from the GIS service.
-              */
-              positions={pipeline.coordinates}
-
-              /*
-                Pipeline appearance.
-              */
-              pathOptions={{
-                color,
-                weight: 3,
-                opacity: 0.8,
-              }}
-            >
+            <div key={pipeline.id}>
 
               {/*
-                ==============================================
-                HOVER TOOLTIP
-                ==============================================
-
-                Appears when you hover over a pipeline.
+              ------------------------------------------------
+              PIPELINE LINE
+              ------------------------------------------------
               */}
 
-              <Tooltip sticky>
-                <div>
-                  <strong>
-                    {pipeline.company ||
-                      "Pipeline"}
-                  </strong>
+              <Polyline
+                positions={
+                  pipeline.coordinates
+                }
 
-                  <br />
+                pathOptions={{
+                  color,
 
-                  Licence:{" "}
-                  {pipeline.licenceNumber ??
-                    "Unknown"}
+                  weight:
+                    selected ? 7 : 3,
 
-                  <br />
+                  opacity:
+                    selected ? 1 : 0.75,
 
-                  Line:{" "}
-                  {pipeline.lineNumber ??
-                    "Unknown"}
-                </div>
-              </Tooltip>
+                  dashArray:
+                    getConfidenceDash(
+                      pipeline.confidence
+                    ),
+                }}
 
+                eventHandlers={{
+                  click: () =>
+                    setSelectedPipeline(
+                      pipeline
+                    ),
+                }}
+              >
 
-              {/*
-                ==============================================
-                CLICK POPUP
-                ==============================================
+                <Tooltip sticky>
 
-                Appears when you click a pipeline.
-              */}
-
-              <Popup>
-                <div
-                  style={{
-                    minWidth: "220px",
-                  }}
-                >
-                  {/* Company */}
-                  <strong
+                  <div
                     style={{
-                      fontSize: "16px",
+                      minWidth: "180px",
                     }}
                   >
-                    {pipeline.company ||
-                      "Pipeline"}
-                  </strong>
 
-
-                  <hr
-                    style={{
-                      margin: "8px 0",
-                    }}
-                  />
-
-
-                  {/* Licence number */}
-                  <div>
                     <strong>
-                      Licence:
-                    </strong>{" "}
+                      {pipeline.company ||
+                        "Pipeline"}
+                    </strong>
 
+                    <br />
+
+                    Licence:{" "}
                     {pipeline.licenceNumber ??
                       "Unknown"}
-                  </div>
 
+                    <br />
 
-                  {/* Line number */}
-                  <div>
-                    <strong>
-                      Line:
-                    </strong>{" "}
-
+                    Line:{" "}
                     {pipeline.lineNumber ??
                       "Unknown"}
-                  </div>
 
+                    <hr
+                      style={{
+                        margin: "5px 0",
+                      }}
+                    />
 
-                  {/* Pipeline status */}
-                  <div>
+                    Risk:{" "}
+
                     <strong>
-                      Status:
-                    </strong>{" "}
+                      {pipeline.riskLevel ??
+                        "Not calculated"}
+                    </strong>
 
-                    {pipeline.status ??
-                      "Unknown"}
+                    <br />
+
+                    Confidence:{" "}
+
+                    {pipeline.confidence ??
+                      "Not calculated"}
+
                   </div>
 
+                </Tooltip>
 
-                  {/* Substance transported */}
-                  <div>
+                <Popup>
+
+                  <div
+                    style={{
+                      minWidth: "260px",
+                    }}
+                  >
+
+                    <strong
+                      style={{
+                        fontSize: "16px",
+                      }}
+                    >
+                      {pipeline.company ||
+                        "Pipeline"}
+                    </strong>
+
+                    <div
+                      style={{
+                        marginTop: "3px",
+                        color: "#64748b",
+                      }}
+                    >
+                      Licence{" "}
+                      {pipeline.licenceNumber ??
+                        "Unknown"}
+
+                      {" • "}
+
+                      Line{" "}
+
+                      {pipeline.lineNumber ??
+                        "Unknown"}
+                    </div>
+
+                    <hr
+                      style={{
+                        margin: "10px 0",
+                      }}
+                    />
+
+                    {/* RISK */}
+
+                    <div>
+                      <strong>
+                        Inspection Risk:
+                      </strong>{" "}
+
+                      {pipeline.riskLevel ??
+                        "Not calculated"}
+                    </div>
+
+                    {/* SCORE */}
+
+                    <div>
+                      <strong>
+                        Risk Score:
+                      </strong>{" "}
+
+                      {pipeline.riskScore ??
+                        "Pending incident analysis"}
+                    </div>
+
+                    {/* CONFIDENCE */}
+
+                    <div>
+                      <strong>
+                        Confidence:
+                      </strong>{" "}
+
+                      {pipeline.confidence ??
+                        "Pending incident analysis"}
+                    </div>
+
+                    <hr
+                      style={{
+                        margin: "10px 0",
+                      }}
+                    />
+
+                    {/* EVIDENCE */}
+
                     <strong>
-                      Substance:
-                    </strong>{" "}
+                      Evidence
+                    </strong>
 
-                    {pipeline.substance ??
-                      "Unknown"}
-                  </div>
+                    <div>
+                      Relevant events:{" "}
 
+                      {pipeline.relevantEvents ??
+                        "Pending"}
+                    </div>
 
-                  {/* Pipeline diameter */}
-                  <div>
+                    <div>
+                      Pipeline releases:{" "}
+
+                      {pipeline.pipelineReleases ??
+                        "Pending"}
+                    </div>
+
+                    <div>
+                      Facility fires:{" "}
+
+                      {pipeline.facilityFires ??
+                        "Pending"}
+                    </div>
+
+                    <div>
+                      Limit breaches:{" "}
+
+                      {pipeline.limitBreaches ??
+                        "Pending"}
+                    </div>
+
+                    <div>
+                      Serious releases:{" "}
+
+                      {pipeline.seriousReleases ??
+                        "Pending"}
+                    </div>
+
+                    <div>
+                      Recent events:{" "}
+
+                      {pipeline.recentEvents ??
+                        "Pending"}
+                    </div>
+
+                    <hr
+                      style={{
+                        margin: "10px 0",
+                      }}
+                    />
+
+                    {/* PIPELINE INFORMATION */}
+
                     <strong>
-                      Diameter:
-                    </strong>{" "}
+                      Asset Information
+                    </strong>
 
-                    {pipeline.diameter ??
-                      "Unknown"}
+                    <div>
+                      Substance:{" "}
+
+                      {pipeline.substance ??
+                        "Unknown"}
+                    </div>
+
+                    <div>
+                      Status:{" "}
+
+                      {pipeline.status ??
+                        "Unknown"}
+                    </div>
+
+                    <div>
+                      Diameter:{" "}
+
+                      {pipeline.diameter ??
+                        "Unknown"}
+                    </div>
+
+                    <div>
+                      Material:{" "}
+
+                      {pipeline.material ??
+                        "Unknown"}
+                    </div>
+
+                    {/* WHY RANKED */}
+
+                    {pipeline.primaryDriver && (
+                      <>
+                        <hr
+                          style={{
+                            margin:
+                              "10px 0",
+                          }}
+                        />
+
+                        <strong>
+                          Why it ranked
+                        </strong>
+
+                        <div>
+                          {
+                            pipeline.primaryDriver
+                          }
+                        </div>
+                      </>
+                    )}
+
+                    <div
+                      style={{
+                        marginTop: "12px",
+                        padding: "8px",
+                        background:
+                          "#f1f5f9",
+                        borderRadius: "6px",
+                        fontSize: "11px",
+                      }}
+                    >
+                      Decision-support ranking only.
+                      Engineering review is required
+                      before inspection decisions.
+                    </div>
+
                   </div>
 
+                </Popup>
 
-                  {/* Pipeline material */}
-                  <div>
-                    <strong>
-                      Material:
-                    </strong>{" "}
+              </Polyline>
 
-                    {pipeline.material ??
-                      "Unknown"}
-                  </div>
-                </div>
-              </Popup>
+              {/*
+              ------------------------------------------------
+              EVIDENCE MARKER
+              ------------------------------------------------
 
-            </Polyline>
+              We ONLY display this once real incident
+              evidence has been attached.
+
+              This prevents us from showing fake markers.
+              */}
+
+              {midpoint &&
+                pipeline.relevantEvents !==
+                  null &&
+                pipeline.relevantEvents >
+                  0 && (
+
+                  <CircleMarker
+                    center={midpoint}
+
+                    radius={
+                      getEvidenceMarkerSize(
+                        pipeline.relevantEvents
+                      )
+                    }
+
+                    pathOptions={{
+                      color: "#ffffff",
+
+                      weight: 2,
+
+                      fillColor: color,
+
+                      fillOpacity: 0.8,
+                    }}
+
+                    eventHandlers={{
+                      click: () =>
+                        setSelectedPipeline(
+                          pipeline
+                        ),
+                    }}
+                  >
+
+                    <Tooltip>
+                      <div>
+                        <strong>
+                          {
+                            pipeline.relevantEvents
+                          }{" "}
+                          relevant events
+                        </strong>
+
+                        <br />
+
+                        Risk:{" "}
+
+                        {pipeline.riskLevel ??
+                          "Pending"}
+
+                        <br />
+
+                        Confidence:{" "}
+
+                        {pipeline.confidence ??
+                          "Pending"}
+                      </div>
+                    </Tooltip>
+
+                  </CircleMarker>
+                )}
+
+            </div>
           );
         })}
 
       </MapContainer>
+
     </div>
   );
 }
