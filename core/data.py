@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import sqlite3
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,7 @@ from typing import Any
 import pandas as pd
 
 from core.config import RiskConfig
+from core.db import INCIDENT_COLUMNS, db_path
 
 DATA_PATH = (
     Path(__file__).resolve().parent.parent
@@ -214,10 +216,56 @@ def _derive_features(df: pd.DataFrame, config: RiskConfig) -> pd.DataFrame:
     return out
 
 
-@lru_cache(maxsize=1)
-def _load_cached() -> tuple[pd.DataFrame, dict[str, Any]]:
+def _read_raw_from_db(path: Path) -> pd.DataFrame | None:
+    """Return raw seed columns from SQLite, or None if unavailable/empty."""
+    if not path.exists():
+        return None
+    try:
+        with sqlite3.connect(str(path)) as conn:
+            tables = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='incidents'"
+            ).fetchone()
+            if not tables:
+                return None
+            count = conn.execute("SELECT COUNT(*) FROM incidents").fetchone()[0]
+            if not count:
+                return None
+            cols = ", ".join(INCIDENT_COLUMNS)
+            raw = pd.read_sql_query(
+                f"SELECT {cols} FROM incidents ORDER BY id",
+                conn,
+                parse_dates=["date"],
+            )
+    except (sqlite3.Error, ValueError, OSError):
+        return None
+    return raw
+
+
+def _read_raw_incidents() -> tuple[pd.DataFrame, str]:
+    """Prefer SQLite when DB_PATH exists and has rows; else CSV."""
+    db = db_path()
+    raw = _read_raw_from_db(db)
+    if raw is not None:
+        return raw, f"db:{db.resolve()}"
+    return pd.read_csv(DATA_PATH, parse_dates=["date"]), f"csv:{DATA_PATH.resolve()}"
+
+
+def _incident_source_key() -> str:
+    """Cache key so switching DB_PATH / reloading seed invalidates cleanly."""
+    db = db_path()
+    raw = _read_raw_from_db(db)
+    if raw is not None:
+        mtime = db.stat().st_mtime_ns
+        return f"db:{db.resolve()}:{mtime}:{len(raw)}"
+    mtime = DATA_PATH.stat().st_mtime_ns if DATA_PATH.exists() else 0
+    return f"csv:{DATA_PATH.resolve()}:{mtime}"
+
+
+@lru_cache(maxsize=8)
+def _load_cached(source_key: str) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Load and clean once. Callers must .copy() before mutating."""
-    raw = pd.read_csv(DATA_PATH, parse_dates=["date"])
+    _ = source_key
+    raw, source = _read_raw_incidents()
     corridors_before = int(raw["corridor"].nunique())
     n_loaded = len(raw)
 
@@ -252,6 +300,7 @@ def _load_cached() -> tuple[pd.DataFrame, dict[str, Any]]:
         "alias_merges": merge_counts,
         "snaps": snaps,
         "relabel_counts": relabel,
+        "source": source,
     }
     return df, report
 
@@ -263,7 +312,7 @@ def load_incidents(
 
     If ``config`` changes volume thresholds vs defaults, severity_v2 is recomputed.
     """
-    df, report = _load_cached()
+    df, report = _load_cached(_incident_source_key())
     out = df.copy()
     report = dict(report)
 

@@ -181,8 +181,8 @@ def _score_explanation(match: dict[str, Any], cfg: RiskConfig) -> str:
     wl = _format_weight(cfg.weights["low"])
     return (
         f"Score {score_v} = sum of {n} incident weights "
-        f"({match['n_high']} high × {wh}, {match['n_medium']} medium × {wm}, "
-        f"{match['n_low']} low × {wl}); likelihood = {likelihood} incidents; "
+        f"({match['n_high']} high x {wh}, {match['n_medium']} medium x {wm}, "
+        f"{match['n_low']} low x {wl}); likelihood = {likelihood} incidents; "
         f"consequence = average weight {consequence}."
     )
 

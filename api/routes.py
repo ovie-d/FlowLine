@@ -99,9 +99,11 @@ def ranking_csv(
         writer.writerow({k: row.get(k) for k in columns})
     buf.seek(0)
     filename = _csv_filename(high=high, count_only=count_only)
+    # utf-8-sig so Excel/Numbers open cleanly on macOS.
+    payload = buf.getvalue().encode("utf-8-sig")
     return StreamingResponse(
-        iter([buf.getvalue()]),
-        media_type="text/csv",
+        iter([payload]),
+        media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
@@ -176,9 +178,17 @@ def agent(body: AgentRequest) -> dict[str, Any]:
     new_history = result.get("history")
     if isinstance(new_history, list):
         set_history(body.session_id, new_history)
+    # Handoff contract: chips only need name + input (drop bulky result).
+    slim_calls: list[dict[str, Any]] = []
+    for call in result.get("tool_calls", []) or []:
+        if not isinstance(call, dict):
+            continue
+        slim_calls.append(
+            {"name": call.get("name"), "input": call.get("input", {})}
+        )
     payload: dict[str, Any] = {
         "answer": result.get("answer", ""),
-        "tool_calls": result.get("tool_calls", []),
+        "tool_calls": slim_calls,
     }
     if result.get("error"):
         payload["error"] = True

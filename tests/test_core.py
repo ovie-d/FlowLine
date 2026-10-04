@@ -18,6 +18,7 @@ from core.config import (
 )
 from core.data import clear_load_cache, load_incidents
 from core.scoring import explain_corridor, score
+from core.triage import draft_triage
 
 ROOT = Path(__file__).resolve().parent.parent
 SEED = ROOT / "data" / "cer_pipeline_incidents_alberta_2015.csv"
@@ -122,6 +123,18 @@ def test_explain_sherwood_operators_and_score_explanation():
     )
     assert str(out["score"]) in out["score_explanation"]
     assert "sum of" in out["score_explanation"]
+    assert "6 high x 3" in out["score_explanation"]
+    assert "×" not in out["score_explanation"]
+
+
+def test_user_facing_explanations_are_ascii():
+    """Projector/Safari-safe: no non-ASCII in score_explanation or triage reasons."""
+    for row in score(DEFAULT, top=15):
+        detail = explain_corridor(row["corridor"], DEFAULT)
+        assert detail["score_explanation"].isascii()
+    triage = draft_triage(DEFAULT, top=15)
+    for draft in triage["drafts"]:
+        assert draft["reason"].isascii()
 
 
 def test_compare_overlap_shape():

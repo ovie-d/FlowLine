@@ -8,7 +8,9 @@ __pycache__/
 .mypy_cache/
 inspection_decisions.json
 pipeline-incidents-comprehensive-data.csv
+*.db
 *.egg-info/
 dist/
 build/
 .DS_Store
+
