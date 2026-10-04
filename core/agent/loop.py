@@ -116,13 +116,40 @@ def run_agent(
 def main() -> None:
     import sys
 
-    msg = " ".join(sys.argv[1:]) or "What is the top corridor under high=6?"
-    out = run_agent(msg)
-    print(out["answer"])
-    if out.get("error"):
-        print("\n(agent unavailable)")
-    else:
-        print("\nTool calls:", [t["name"] for t in out["tool_calls"]])
+    args = sys.argv[1:]
+    if args:
+        msg = " ".join(args)
+        out = run_agent(msg)
+        print(out["answer"])
+        if out.get("error"):
+            print("\n(agent unavailable)")
+        else:
+            print("\nTool calls:", [t["name"] for t in out["tool_calls"]])
+        return
+
+    history: list[dict[str, Any]] = []
+    print("Pipeline risk agent. Type a question, or exit/quit to stop.")
+    try:
+        while True:
+            try:
+                msg = input("> ").strip()
+            except EOFError:
+                print()
+                break
+            if not msg:
+                continue
+            if msg.lower() in {"exit", "quit"}:
+                break
+            out = run_agent(msg, history)
+            history = out.get("history") or history
+            print(out["answer"])
+            if out.get("error"):
+                print("\n(agent unavailable)")
+            else:
+                print("\nTool calls:", [t["name"] for t in out["tool_calls"]])
+            print()
+    except KeyboardInterrupt:
+        print("\nExiting.")
 
 
 if __name__ == "__main__":
