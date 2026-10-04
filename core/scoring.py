@@ -161,6 +161,39 @@ def score(config: RiskConfig | None = None, top: int = 15) -> list[dict[str, Any
     return out
 
 
+def _format_weight(value: float) -> str:
+    return str(int(value)) if float(value).is_integer() else str(float(value))
+
+
+def _score_explanation(match: dict[str, Any], cfg: RiskConfig) -> str:
+    n = int(match["n"])
+    score_v = match["score"]
+    likelihood = match["likelihood"]
+    consequence = match["consequence"]
+    if cfg.count_only:
+        return (
+            f"Score {score_v} = incident count under a count-only policy "
+            f"({n} incidents); likelihood = {likelihood} incidents; "
+            f"consequence = average weight {consequence}."
+        )
+    wh = _format_weight(cfg.weights["high"])
+    wm = _format_weight(cfg.weights["medium"])
+    wl = _format_weight(cfg.weights["low"])
+    return (
+        f"Score {score_v} = sum of {n} incident weights "
+        f"({match['n_high']} high × {wh}, {match['n_medium']} medium × {wm}, "
+        f"{match['n_low']} low × {wl}); likelihood = {likelihood} incidents; "
+        f"consequence = average weight {consequence}."
+    )
+
+
+def _operators_for_group(group: pd.DataFrame) -> list[dict[str, Any]]:
+    counts = group["company"].value_counts()
+    rows = [{"company": str(name), "n": int(n)} for name, n in counts.items()]
+    rows.sort(key=lambda r: (-r["n"], r["company"]))
+    return rows
+
+
 def explain_corridor(name: str, config: RiskConfig | None = None) -> dict[str, Any]:
     """Corridor detail for the agent. Unknown name -> {error}."""
     cfg = config or RiskConfig()
@@ -189,6 +222,8 @@ def explain_corridor(name: str, config: RiskConfig | None = None) -> dict[str, A
         "confidence_label": (
             LOW_CONFIDENCE_LABEL if match["confidence"] == "low" else None
         ),
+        "operators": _operators_for_group(group),
+        "score_explanation": _score_explanation(match, cfg),
         "incidents": incidents,
         "causes": (
             group["cause"].value_counts().head(8).astype(int).to_dict()

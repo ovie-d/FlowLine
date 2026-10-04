@@ -112,6 +112,18 @@ def test_explain_unknown_corridor():
     assert "error" in out
 
 
+def test_explain_sherwood_operators_and_score_explanation():
+    out = explain_corridor("Sherwood Park")
+    companies = {row["company"] for row in out["operators"]}
+    assert "Enbridge" in companies
+    assert "Trans Mountain" in companies
+    assert out["operators"] == sorted(
+        out["operators"], key=lambda r: (-r["n"], r["company"])
+    )
+    assert str(out["score"]) in out["score_explanation"]
+    assert "sum of" in out["score_explanation"]
+
+
 def test_compare_overlap_shape():
     result = compare(BASELINE_COUNT, CONSEQUENCE_HEAVY, top=15)
     assert "overlap" in result
