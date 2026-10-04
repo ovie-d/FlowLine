@@ -1,0 +1,243 @@
+"use client";
+
+import type { RankingRow, TriageDraft } from "@/lib/types";
+import { formatMove, moveColor, moveDelta, sevColor } from "@/lib/format";
+import { motion } from "framer-motion";
+
+type Props = {
+  rows: RankingRow[];
+  draftsByCorridor: Map<string, TriageDraft>;
+  baselineRank: Map<string, number>;
+  selected: string | null;
+  expanded: boolean;
+  onToggleExpanded: () => void;
+  onSelect: (corridor: string) => void;
+  high: number;
+  collapsedSummary: string;
+  thinCount: number;
+};
+
+const COL =
+  "36px minmax(0, 2fr) minmax(0, 1fr) 52px 104px";
+
+export function RankedList({
+  rows,
+  draftsByCorridor,
+  baselineRank,
+  selected,
+  expanded,
+  onToggleExpanded,
+  onSelect,
+  high,
+  collapsedSummary,
+  thinCount,
+}: Props) {
+  const visible = expanded ? rows : rows.slice(0, 5);
+  const maxScore = rows[0]?.score || 100;
+
+  return (
+    <section
+      className="min-w-0 rounded-xl border border-[#E3E3DE] bg-white"
+      style={{ flex: "1 1 560px", padding: 16 }}
+    >
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-3">
+        <div className="text-[15px] font-semibold text-[#15171A]">
+          Inspection priority · top 5 of 15
+        </div>
+        <div className="flex flex-wrap items-center gap-3.5">
+          <span className="text-[12px] text-[#5A5F66]">
+            Move = change vs count-only rank
+          </span>
+          <a
+            href={`${process.env.NEXT_PUBLIC_API_URL}/ranking.csv?high=${high}`}
+            className="inline-flex items-center gap-[5px] rounded-[5px] border border-[#DCDCD7] bg-white px-2 text-[12px] font-medium text-[#15171A]"
+            style={{ minHeight: 26 }}
+          >
+            <svg width="12" height="12" viewBox="0 0 14 14" aria-hidden>
+              <path
+                d="M7 2v7M4 6.5L7 9.5 10 6.5M2.5 12h9"
+                fill="none"
+                stroke="#15171A"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            Export CSV
+          </a>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <div className="flex min-w-[600px] flex-col">
+          <div
+            className="grid gap-3 border-b border-[#ECECE7] px-2.5 py-2 text-[12px] text-[#5A5F66]"
+            style={{ gridTemplateColumns: COL }}
+          >
+            <span>#</span>
+            <span>Corridor · reason</span>
+            <span>Risk score</span>
+            <span>Move</span>
+            <span>Agent draft</span>
+          </div>
+
+          {visible.map((row) => (
+            <RankRow
+              key={row.corridor}
+              row={row}
+              draft={draftsByCorridor.get(row.corridor)}
+              move={moveDelta(baselineRank.get(row.corridor), row.rank)}
+              selected={selected === row.corridor}
+              maxScore={maxScore}
+              onSelect={() => onSelect(row.corridor)}
+            />
+          ))}
+
+          {rows.length > 5 && (
+            <button
+              type="button"
+              onClick={onToggleExpanded}
+              aria-expanded={expanded}
+              className="flex w-full items-center justify-between gap-3 border-b border-[#F0F0EC] bg-[#FAFAF8] px-2.5 py-3 text-left text-[#15171A]"
+            >
+              <span className="flex flex-wrap items-center gap-2.5">
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 14 14"
+                  aria-hidden
+                  style={{
+                    transition: "transform 0.15s",
+                    transform: `rotate(${expanded ? 180 : 0}deg)`,
+                  }}
+                >
+                  <path
+                    d="M3 5l4 4 4-4"
+                    fill="none"
+                    stroke="#15171A"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <span className="text-[14px] font-semibold">
+                  {expanded ? "Hide ranks 6–15" : "Show ranks 6–15"}
+                </span>
+                <span className="text-[13px] text-[#5A5F66]">
+                  {collapsedSummary}
+                </span>
+              </span>
+              {thinCount > 0 && (
+                <span className="whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] font-semibold text-[#8A2E08] bg-[#FDEEE3]">
+                  {thinCount} high risk, low evidence base
+                </span>
+              )}
+            </button>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function RankRow({
+  row,
+  draft,
+  move,
+  selected,
+  maxScore,
+  onSelect,
+}: {
+  row: RankingRow;
+  draft?: TriageDraft;
+  move: number | null;
+  selected: boolean;
+  maxScore: number;
+  onSelect: () => void;
+}) {
+  const thin = row.confidence === "low";
+  const width = Math.max(4, Math.round((100 * row.score) / maxScore));
+  const bar = sevColor(row.n_high);
+  const action = draft?.action;
+  const actionText = action
+    ? `${action}${draft?.priority ? ` ${draft.priority}` : ""}`
+    : "—";
+
+  return (
+    <motion.div layout>
+      <button
+        type="button"
+        onClick={onSelect}
+        className="grid w-full items-center gap-3 border-b border-[#F0F0EC] px-2.5 py-2.5 text-left text-[#15171A]"
+        style={{
+          gridTemplateColumns: COL,
+          background: selected ? "#F1F4FD" : "#FFFFFF",
+          boxShadow: selected ? "inset 3px 0 0 #1D4ED8" : undefined,
+        }}
+      >
+        <span className="font-mono text-[14px] font-semibold">{row.rank}</span>
+
+        <span className="flex min-w-0 flex-col gap-[3px]">
+          <span className="flex flex-wrap items-center gap-2">
+            <span className="text-[15px] font-semibold">{row.corridor}</span>
+            {thin && (
+              <span className="rounded px-1.5 py-0.5 text-[11px] font-semibold text-[#8A2E08] bg-[#FDEEE3]">
+                High risk, low evidence base
+              </span>
+            )}
+          </span>
+          <span className="text-[12px] leading-[1.4] text-[#5A5F66]">
+            {draft?.reason ?? "—"}
+          </span>
+        </span>
+
+        <span className="flex items-center gap-2">
+          <span className="block h-1.5 flex-1 overflow-hidden rounded-[3px] bg-[#EFEFEB]">
+            <span
+              className="block h-full"
+              style={{ width: `${width}%`, background: bar }}
+            />
+          </span>
+          <span className="w-10 text-right font-mono text-[13px]">
+            {row.score.toFixed(1)}
+          </span>
+        </span>
+
+        <span
+          className="font-mono text-[13px] font-semibold"
+          style={{ color: moveColor(move) }}
+        >
+          {formatMove(move)}
+        </span>
+
+        <ActionBadge action={action} text={actionText} />
+      </button>
+    </motion.div>
+  );
+}
+
+function ActionBadge({
+  action,
+  text,
+}: {
+  action?: string;
+  text: string;
+}) {
+  if (!action) {
+    return <span className="text-[12px] text-[#6B6F75]">—</span>;
+  }
+  const style =
+    action === "Escalate"
+      ? { color: "#FFFFFF", background: "#A8370A" }
+      : action === "Inspect"
+        ? { color: "#1E3A8A", background: "#E8EEFC" }
+        : { color: "#3A3E44", background: "#EFEFEB" };
+  return (
+    <span
+      className="rounded-md px-2 py-1 text-center text-[12px] font-semibold"
+      style={style}
+    >
+      {text}
+    </span>
+  );
+}

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Flowline dashboard, top 5 view</title>
+<!-- Reference mockup (styles are the spec). Full interactive DATA script omitted;
+     see chat paste / original artifact for FLOW.* demo data. -->
+<style>
+body{margin:0;background:#F5F5F3}
+a{color:#1D4ED8}a:hover{color:#1E3A8A}
+input[type=range]{accent-color:#14171C}
+button:focus-visible,input:focus-visible{outline:2px solid #1D4ED8;outline-offset:2px}
+</style>
+</head>
+<body>
+<!--
+  SOURCE OF TRUTH for layout/spacing/type/color.
+  Implemented in app/ + components/. Key snippets:
+
+  Page: padding 16px 24px 32px; max-width 1600px; gap 14px; bg #F5F5F3
+  Header: Instrument Serif 40px; subtitle 14px #5A5F66; border-bottom 1px #DCDCD7; pb 10px
+  Grid: minmax(0,1fr) 380px; gap 16px
+  Cards: bg #FFF; border 1px #E3E3DE; radius 12px
+  Alberta polygon:
+    points="0.00,0.00 100.00,0.00 100.00,100.00 59.40,100.00 53.00,90.91 46.00,83.64 37.00,77.27 27.00,70.91 17.00,64.55 8.00,59.09 0.00,55.45"
+  Dot projection: left=(lon+120)/10*100%; top=(60-lat)/11*100%
+  Dot size: 14 + 26 * score / maxScore
+-->
+<div style="min-height:100vh;background:#F5F5F3;font-family:Geist,Helvetica Neue,Arial,sans-serif;color:#15171A;box-sizing:border-box;padding:16px 24px 32px;-webkit-font-smoothing:antialiased">
+  <div style="max-width:1600px;margin:0 auto;display:flex;flex-direction:column;gap:14px">
+    <header style="padding-bottom:10px;border-bottom:1px solid #DCDCD7">
+      <div style="font-family:Instrument Serif,Georgia,serif;font-size:40px;line-height:1;letter-spacing:-0.01em">Flowline</div>
+      <div style="font-size:14px;color:#5A5F66;margin-top:4px">Pipeline corridor inspection priority · Alberta · CER incident history 2015 – Aug 2026</div>
+    </header>
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:16px;align-items:start">
+      <main style="display:flex;flex-direction:column;gap:14px;min-width:0"><!-- policy / stats / map+list --></main>
+      <aside style="position:sticky;top:16px;height:calc(100vh - 32px);min-height:560px;background:#FFF;border:1px solid #E3E3DE;border-radius:12px;padding:16px"><!-- agent --></aside>
+    </div>
+    <footer style="font-size:13px;color:#5A5F66;text-align:center;padding-top:8px">We rank historic incident hotspots under a stated risk policy. We do not certify any pipe as safe. The tool supports the integrity engineer's decision; it doesn't replace engineering judgment.</footer>
+  </div>
+</div>
+</body>
+</html>
