@@ -20,6 +20,11 @@ Seed data: `data/cer_pipeline_incidents_alberta_2015.csv`
 # Required 5 Case steps
 python -m core.deliverables
 
+# API (one worker — keeps agent sessions + decisions consistent)
+uvicorn api.main:app --reload --workers 1
+# http://127.0.0.1:8000/health
+# http://127.0.0.1:8000/docs
+
 # Tests
 pytest -q
 
