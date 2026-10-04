@@ -186,7 +186,7 @@ function RankRow({
   const bar = sevColor(row.n_high);
   const action = draft?.action?.toLowerCase();
   const actionText = action
-    ? `${capitalizeAction(action)}${draft?.priority ? ` ${draft.priority}` : ""}`
+    ? `${capitalizeAction(action)}${draft?.priority ? ` · ${draft.priority}` : ""}`
     : "—";
 
   return (
@@ -254,14 +254,22 @@ function ActionBadge({
   }
   const style =
     action === "escalate"
-      ? { color: "#FFFFFF", background: "#A8370A" }
+      ? { color: "#A8370A", background: "#FBE9DF" }
       : action === "inspect"
         ? { color: "#1E3A8A", background: "#E8EEFC" }
-        : { color: "#3A3E44", background: "#EFEFEB" };
+        : { color: "#5A5F66", background: "#EFEFEB" };
   return (
     <span
-      className="rounded-md px-2 py-1 text-center text-[12px] font-semibold"
-      style={style}
+      title="Agent draft · P1 = act first · P2 = regular cycle · P3 = monitor. Approve in the agent panel."
+      className="inline-block cursor-default text-center text-[11px] font-semibold"
+      style={{
+        ...style,
+        padding: "2px 8px",
+        borderRadius: 9999,
+        border: "none",
+        boxShadow: "none",
+        lineHeight: 1.4,
+      }}
     >
       {text}
     </span>
