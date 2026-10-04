@@ -94,6 +94,48 @@ def test_improvement_serious_events(client: TestClient) -> None:
     assert stages["ours"]["serious_captured"] == 68
 
 
+def test_improvement_for_high_query(client: TestClient) -> None:
+    r = client.get("/improvement", params={"high": 6})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["serious_total"] == 123
+    assert body["current"]["serious_captured"] == 69
+    assert body["current"]["incidents_covered"] == 154
+    assert body["baseline"]["serious_captured"] == 62
+    assert body["baseline"]["incidents_covered"] == 169
+    assert body["policy"]["high"] == 6.0
+
+
+def test_agent_forwards_high_as_policy(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_run(question, history=None, max_steps=8, policy=None):
+        seen["policy"] = policy
+        history = list(history or [])
+        history.append({"role": "user", "content": question})
+        return {
+            "answer": "ok",
+            "tool_calls": [],
+            "history": history,
+        }
+
+    monkeypatch.setattr("api.routes.run_agent", fake_run)
+    r = client.post(
+        "/agent",
+        json={"session_id": "pol", "question": "Explain Sherwood Park", "high": 6},
+    )
+    assert r.status_code == 200
+    assert seen["policy"] == {"high": 6}
+
+    r2 = client.post(
+        "/agent",
+        json={"session_id": "pol2", "question": "Triage", "high": 1},
+    )
+    assert r2.status_code == 200
+    assert seen["policy"] == {"count_only": True}
+
 def test_ranking_csv_filename(client: TestClient) -> None:
     r = client.get("/ranking.csv", params={"high": 6})
     assert r.status_code == 200
@@ -175,7 +217,7 @@ def test_agent_reset(client: TestClient) -> None:
 def test_agent_tool_calls_are_slim(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def fake_run(question: str, history=None):
+    def fake_run(question: str, history=None, max_steps=8, policy=None):
         history = list(history or [])
         history.append({"role": "user", "content": question})
         return {
@@ -216,7 +258,7 @@ def test_agent_multi_turn_logs_decision(
     set_decisions_path(tmp_path / "decisions.json")
     monkeypatch.setattr("api.sessions.clear_all", lambda: None)
 
-    def fake_run(question: str, history=None):
+    def fake_run(question: str, history=None, max_steps=8, policy=None):
         history = list(history or [])
         history.append({"role": "user", "content": question})
         q = question.lower()

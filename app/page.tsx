@@ -13,7 +13,7 @@ import {
   resetAgent,
 } from "@/lib/api";
 import { policyLabel } from "@/lib/format";
-import type { TriageDraft } from "@/lib/types";
+import type { TriageAction, TriageDraft } from "@/lib/types";
 import { AgentSidebar } from "@/components/AgentSidebar";
 import type { ChatMessage } from "@/components/ChatThread";
 import { MapDetailsCard } from "@/components/MapDetailsCard";
@@ -28,6 +28,14 @@ function useDebounced<T>(value: T, ms: number): T {
     return () => window.clearTimeout(id);
   }, [value, ms]);
   return debounced;
+}
+
+function normalizeAction(action: string): TriageAction {
+  return action.toLowerCase() as TriageAction;
+}
+
+function normalizeDraft(d: TriageDraft): TriageDraft {
+  return { ...d, action: normalizeAction(d.action) };
 }
 
 export default function Home() {
@@ -57,11 +65,16 @@ export default function Home() {
     queryKey: ["triage", debouncedHigh],
     queryFn: () => getTriage(debouncedHigh),
     placeholderData: keepPreviousData,
+    select: (data) => ({
+      ...data,
+      drafts: data.drafts.map(normalizeDraft),
+    }),
   });
 
   const improvementQ = useQuery({
-    queryKey: ["improvement"],
-    queryFn: getImprovement,
+    queryKey: ["improvement", debouncedHigh],
+    queryFn: () => getImprovement(debouncedHigh),
+    placeholderData: keepPreviousData,
   });
 
   const decisionsQ = useQuery({
@@ -110,7 +123,7 @@ export default function Home() {
   const escalateDrafts = useMemo(
     () =>
       (triage?.drafts ?? []).filter(
-        (d) => d.action === "Escalate" || d.priority === "P1",
+        (d) => d.action === "escalate" || d.priority === "P1",
       ),
     [triage],
   );
@@ -119,9 +132,14 @@ export default function Home() {
     const set = new Set<string>();
     const policy = policyLabel(debouncedHigh);
     for (const d of decisionsQ.data ?? []) {
+      const policyStr =
+        typeof d.policy === "string" ? d.policy : JSON.stringify(d.policy);
       if (
         d.action.toLowerCase().includes("escalate") &&
-        (d.policy === policy || d.policy.includes(`high=${debouncedHigh}`))
+        (policyStr === policy ||
+          policyStr.includes(`high=${debouncedHigh}`) ||
+          policyStr.includes(`"high": ${debouncedHigh}`) ||
+          policyStr.includes(`"high":${debouncedHigh}`))
       ) {
         set.add(d.corridor);
       }
@@ -130,28 +148,22 @@ export default function Home() {
   }, [decisionsQ.data, debouncedHigh]);
 
   const restDrafts = (triage?.drafts ?? []).filter((d) => d.rank > 5);
-  const inspectN = restDrafts.filter((d) => d.action === "Inspect").length;
-  const deferN = restDrafts.filter((d) => d.action === "Defer").length;
+  const inspectN = restDrafts.filter((d) => d.action === "inspect").length;
+  const deferN = restDrafts.filter((d) => d.action === "defer").length;
   const thinCount = ranking
     .slice(5)
     .filter((r) => r.confidence === "low").length;
-  const collapsedSummary = `${inspectN} inspect · ${deferN} defer`;
+  const collapsedParts: string[] = [];
+  if (inspectN > 0) collapsedParts.push(`${inspectN} inspect`);
+  if (deferN > 0) collapsedParts.push(`${deferN} defer`);
+  const collapsedSummary = collapsedParts.join(" · ");
 
-  const seriousTop15 = ranking.reduce((s, r) => s + (r.n_high ?? 0), 0);
-  const incidentsTop15 = ranking.reduce((s, r) => s + (r.n ?? 0), 0);
-  const baselineTop15 = (baselineQ.data ?? []).slice(0, 15);
-  const seriousBaseline = baselineTop15.reduce((s, r) => s + (r.n_high ?? 0), 0);
-  const incidentsBaseline = baselineTop15.reduce((s, r) => s + (r.n ?? 0), 0);
-  const seriousTotal = (baselineQ.data ?? []).reduce(
-    (s, r) => s + (r.n_high ?? 0),
-    0,
-  );
-
-  // Prefer improvement endpoint for serious baseline if present
-  const stages = improvementQ.data?.stages;
-  const baselineSeriousFromApi =
-    stages?.find((s) => String(s.name).toLowerCase().includes("baseline"))
-      ?.serious ?? seriousBaseline;
+  const improvement = improvementQ.data;
+  const seriousTop15 = improvement?.current.serious_captured ?? null;
+  const seriousTotal = improvement?.serious_total ?? null;
+  const seriousBaseline = improvement?.baseline.serious_captured ?? null;
+  const incidentsTop15 = improvement?.current.incidents_covered ?? null;
+  const incidentsBaseline = improvement?.baseline.incidents_covered ?? null;
 
   function selectCorridor(name: string) {
     setSelected(name);
@@ -167,7 +179,7 @@ export default function Home() {
     setMessages((m) => [...m, userMsg]);
     setThinking(true);
     try {
-      const res = await askAgent(sessionId, question);
+      const res = await askAgent(sessionId, question, high);
       const explain = res.tool_calls?.find((t) => t.name === "explain_corridor");
       const corridorFromTool =
         explain && typeof explain.input?.name === "string"
@@ -178,8 +190,7 @@ export default function Home() {
 
       if (corridorFromTool) selectCorridor(corridorFromTool);
 
-      const escalateHit = res.tool_calls?.find((t) => t.name === "log_decision");
-      if (escalateHit || res.tool_calls?.some((t) => t.name === "log_decision")) {
+      if (res.tool_calls?.some((t) => t.name === "log_decision")) {
         await queryClient.invalidateQueries({ queryKey: ["decisions"] });
       }
 
@@ -304,26 +315,40 @@ export default function Home() {
             gap: 16,
             alignItems: "stretch",
             minHeight: 0,
+            overflow: "hidden",
           }}
         >
           <main
-            className="flex min-w-0 flex-col"
-            style={{ gap: 14, minHeight: 0, overflowY: "auto" }}
+            className="flex min-h-0 min-w-0 flex-col"
+            style={{ gap: 14, minHeight: 0, overflow: "hidden" }}
           >
-            <PolicyBar high={high} onChange={setHigh} />
+            <div style={{ flex: "0 0 auto" }}>
+              <PolicyBar high={high} onChange={setHigh} />
+            </div>
 
-            <StatCards
-              topCorridor={ranking[0]?.corridor ?? null}
-              topRow={ranking[0] ?? null}
-              seriousTop15={ranking.length ? seriousTop15 : null}
-              seriousTotal={seriousTotal || null}
-              seriousBaseline={baselineSeriousFromApi}
-              incidentsTop15={ranking.length ? incidentsTop15 : null}
-              incidentsBaseline={incidentsBaseline || null}
-              triage={triage}
-            />
+            <div style={{ flex: "0 0 auto" }}>
+              <StatCards
+                topCorridor={ranking[0]?.corridor ?? null}
+                topRow={ranking[0] ?? null}
+                seriousTop15={seriousTop15}
+                seriousTotal={seriousTotal}
+                seriousBaseline={seriousBaseline}
+                incidentsTop15={incidentsTop15}
+                incidentsBaseline={incidentsBaseline}
+                triage={triage}
+              />
+            </div>
 
-            <section className="flex flex-wrap items-start gap-4">
+            <section
+              className="flex min-h-0"
+              style={{
+                flex: "1 1 auto",
+                minHeight: 0,
+                gap: 16,
+                alignItems: "stretch",
+                overflow: "hidden",
+              }}
+            >
               <MapDetailsCard
                 tab={tab}
                 onTabChange={setTab}

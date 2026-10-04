@@ -225,3 +225,98 @@ def test_load_dotenv_sets_missing_keys(tmp_path, monkeypatch):
 def test_log_decision_tool_bad_action_returns_error(decisions_file: Path):
     out = log_decision("Edson", "noop", "P1", "x")
     assert "error" in out
+
+
+def test_dispatch_policy_merges_for_explain():
+    result = dispatch_tool(
+        "explain_corridor",
+        {"name": "Sherwood Park"},
+        policy={"high": 6},
+    )
+    assert result["rank"] == 1
+    assert result["score"] == 48.0
+
+
+def test_dispatch_no_policy_default_rank():
+    result = dispatch_tool("explain_corridor", {"name": "Sherwood Park"})
+    assert result["rank"] == 2
+    assert result["score"] == 30.0
+
+
+def test_dispatch_own_high_not_overridden_by_policy():
+    result = dispatch_tool(
+        "explain_corridor",
+        {"name": "Sherwood Park", "config_overrides": {"high": 3}},
+        policy={"high": 6},
+    )
+    assert result["rank"] == 2
+    assert result["score"] == 30.0
+
+
+def test_log_decision_inherits_dashboard_policy(decisions_file: Path):
+    result = dispatch_tool(
+        "log_decision",
+        {
+            "corridor": "Sherwood Park",
+            "action": "escalate",
+            "priority": "P1",
+            "reason": "planner approved under slider",
+        },
+        policy={"high": 6},
+    )
+    assert result.get("ok") is True
+    assert result["logged"]["policy"]["high"] == 6
+
+
+def test_run_agent_passes_policy_into_dispatch(monkeypatch, decisions_file: Path):
+    """Mock Anthropic: one tool_use then end_turn; policy must reach dispatch."""
+    seen: dict[str, object] = {}
+
+    class _Block:
+        type = "tool_use"
+        name = "explain_corridor"
+        id = "tu_1"
+        input = {"name": "Sherwood Park"}
+
+        def model_dump(self, exclude_none=True):
+            return {
+                "type": self.type,
+                "name": self.name,
+                "id": self.id,
+                "input": self.input,
+            }
+
+    class _Response:
+        def __init__(self, stop_reason, content):
+            self.stop_reason = stop_reason
+            self.content = content
+
+    class _Messages:
+        def create(self, **kwargs):
+            seen["system"] = kwargs.get("system", "")
+            if seen.get("calls"):
+                return _Response("end_turn", [])
+            seen["calls"] = 1
+            return _Response("tool_use", [_Block()])
+
+    class _Client:
+        messages = _Messages()
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    monkeypatch.setattr("core.agent.loop.load_dotenv", lambda: None)
+    monkeypatch.setattr("core.agent.loop._client", lambda: _Client())
+
+    real_dispatch = dispatch_tool
+
+    def tracking_dispatch(name, arguments, policy=None):
+        seen["dispatch_policy"] = policy
+        return real_dispatch(name, arguments, policy=policy)
+
+    monkeypatch.setattr("core.agent.loop.dispatch_tool", tracking_dispatch)
+
+    out = run_agent("Explain Sherwood Park", policy={"high": 6})
+    assert seen["dispatch_policy"] == {"high": 6}
+    assert "high 6x" in str(seen["system"]).lower().replace("×", "x")
+    assert out["tool_calls"]
+    assert out["tool_calls"][0]["result"]["rank"] == 1
+    assert out["tool_calls"][0]["result"]["score"] == 48.0

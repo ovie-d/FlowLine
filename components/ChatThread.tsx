@@ -1,6 +1,7 @@
 "use client";
 
 import ReactMarkdown from "react-markdown";
+import { formatToolChip } from "@/lib/format";
 import type { AgentToolCall } from "@/lib/types";
 
 export type ChatMessage = {
@@ -56,13 +57,7 @@ export function ChatThread({
                   borderRadius: 4,
                 }}
               >
-                {t.name}
-                {t.input && Object.keys(t.input).length
-                  ? `(${Object.values(t.input)
-                      .map(String)
-                      .slice(0, 2)
-                      .join(", ")})`
-                  : ""}
+                {formatToolChip(t.name, t.input)}
               </span>
             ))}
             <div

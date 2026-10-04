@@ -113,6 +113,59 @@ def _stage_metrics(
     }
 
 
+def _policy_snapshot(cfg: RiskConfig) -> dict[str, Any]:
+    if cfg.count_only:
+        return {
+            "high": 1.0,
+            "medium": float(cfg.weights.get("medium", 1.5)),
+            "low": float(cfg.weights.get("low", 1.0)),
+            "count_only": True,
+        }
+    return {
+        "high": float(cfg.weights["high"]),
+        "medium": float(cfg.weights["medium"]),
+        "low": float(cfg.weights["low"]),
+        "count_only": False,
+    }
+
+
+def improvement_for(cfg: RiskConfig, top: int = 15) -> dict[str, Any]:
+    """Serious-event + incident coverage for ``cfg`` vs count-only baseline.
+
+    Same label-independent yardstick as ``improvement_round`` (incident types,
+    not severity labels). Baseline is always count-only.
+    """
+    df, _report = load_incidents()
+    serious_total = int(df["incident_type"].isin(SERIOUS_INCIDENT_TYPES).sum())
+
+    cfg_baseline = RiskConfig(count_only=True, weights=dict(_DEFAULT_WEIGHTS))
+    ranked_current = score(cfg, top=top)
+    ranked_baseline = score(cfg_baseline, top=top)
+
+    current_names = {r["corridor"] for r in ranked_current}
+    baseline_names = {r["corridor"] for r in ranked_baseline}
+
+    current_subset = df[df["corridor"].isin(current_names)]
+    baseline_subset = df[df["corridor"].isin(baseline_names)]
+
+    return {
+        "policy": _policy_snapshot(cfg),
+        "serious_total": serious_total,
+        "current": {
+            "serious_captured": int(
+                current_subset["incident_type"].isin(SERIOUS_INCIDENT_TYPES).sum()
+            ),
+            "incidents_covered": int(len(current_subset)),
+        },
+        "baseline": {
+            "serious_captured": int(
+                baseline_subset["incident_type"].isin(SERIOUS_INCIDENT_TYPES).sum()
+            ),
+            "incidents_covered": int(len(baseline_subset)),
+        },
+    }
+
+
 def improvement_round(top: int = 15) -> dict[str, Any]:
     """First result vs improved result under a label-independent yardstick.
 

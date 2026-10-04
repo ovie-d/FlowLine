@@ -1,5 +1,12 @@
 export type Confidence = "ok" | "low";
 
+export type Driver = {
+  date?: string | null;
+  type?: string;
+  substance?: string;
+  weight?: number;
+};
+
 export type RankingRow = {
   rank: number;
   corridor: string;
@@ -11,14 +18,14 @@ export type RankingRow = {
   n_medium?: number;
   n_low?: number;
   confidence: Confidence;
-  drivers?: string[];
+  drivers?: Driver[];
   operator?: string;
   lat: number | null;
   lon: number | null;
   last_incident?: string | null;
 };
 
-export type TriageAction = "Escalate" | "Inspect" | "Defer";
+export type TriageAction = "escalate" | "inspect" | "defer";
 
 export type TriageDraft = {
   rank: number;
@@ -57,22 +64,48 @@ export type CorridorDetail = {
   confidence_label?: string | null;
   operators: OperatorCount[];
   score_explanation: string;
-  drivers: string[];
+  drivers: Driver[];
   last_incident: string | null;
   lat?: number | null;
   lon?: number | null;
 };
 
 export type ImprovementStage = {
-  name: string;
-  serious?: number;
+  stage: string;
+  serious_captured?: number;
+  serious_total?: number;
+  incidents_covered?: number;
   [key: string]: unknown;
 };
 
-export type Improvement = {
+/** Legacy stages payload from GET /improvement (no high). */
+export type ImprovementRound = {
   stages: ImprovementStage[];
   ours_heavy?: ImprovementStage;
+  summary?: string;
+  weights?: Record<string, number>;
 };
+
+/** Slider-scoped payload from GET /improvement?high=H. */
+export type ImprovementFor = {
+  policy: {
+    high: number;
+    medium?: number;
+    low?: number;
+    count_only?: boolean;
+  };
+  serious_total: number;
+  current: {
+    serious_captured: number;
+    incidents_covered: number;
+  };
+  baseline: {
+    serious_captured: number;
+    incidents_covered: number;
+  };
+};
+
+export type Improvement = ImprovementRound | ImprovementFor;
 
 export type AgentToolCall = {
   name: string;
@@ -92,6 +125,6 @@ export type Decision = {
   action: string;
   priority: string | null;
   reason: string;
-  policy: string;
+  policy: string | Record<string, unknown>;
   source: string;
 };

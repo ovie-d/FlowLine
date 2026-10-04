@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from core.compare import compare, improvement_round
+from core.compare import compare, improvement_for, improvement_round
 from core.config import (
     BASELINE_COUNT,
     CONSEQUENCE_HEAVY,
@@ -169,6 +169,32 @@ def test_improvement_round_stages_and_yardstick():
     )
     assert "ours_heavy" in result
     assert result["ours_heavy"]["stage"] == "ours_heavy"
+
+
+def test_improvement_for_slider_table():
+    expected = {
+        1: (62, 169),
+        2: (67, 167),
+        3: (68, 164),
+        4: (68, 162),
+        5: (68, 159),
+        6: (69, 154),
+        7: (69, 154),
+        8: (69, 154),
+    }
+    for high, (serious, covered) in expected.items():
+        if high == 1:
+            cfg = BASELINE_COUNT
+        else:
+            cfg = RiskConfig(
+                weights={"high": float(high), "medium": 1.5, "low": 1.0}
+            )
+        result = improvement_for(cfg, top=15)
+        assert result["serious_total"] == 123
+        assert result["baseline"]["serious_captured"] == 62
+        assert result["baseline"]["incidents_covered"] == 169
+        assert result["current"]["serious_captured"] == serious, high
+        assert result["current"]["incidents_covered"] == covered, high
 
 
 def test_bad_config_raises():

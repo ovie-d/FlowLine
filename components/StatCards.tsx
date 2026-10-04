@@ -76,17 +76,17 @@ export function StatCards({
 
       <Card label="Agent drafts">
         <div
-          className="font-mono text-[22px] font-semibold"
+          className="whitespace-nowrap font-mono text-[22px] font-semibold leading-[1.15]"
           style={{ marginTop: 2 }}
         >
           <span style={{ color: "#A8370A" }}>{escalate}</span>
           <span className="text-[15px] font-medium text-[#5A5F66]">
             {" "}
-            escalate · {inspect} inspect · {defer} defer
+            escalate
           </span>
         </div>
-        <div className="mt-0.5 text-[13px] text-[#5A5F66]">
-          Awaiting planner approval
+        <div className="mt-0.5 whitespace-nowrap text-[13px] text-[#5A5F66]">
+          {inspect} inspect · {defer} defer
         </div>
       </Card>
     </section>

@@ -3,6 +3,7 @@ import type {
   CorridorDetail,
   Decision,
   Improvement,
+  ImprovementFor,
   RankingRow,
   Triage,
 } from "./types";
@@ -43,12 +44,18 @@ export const getCorridor = (name: string, high: number) =>
     `/corridor/${encodeURIComponent(name)}?high=${high}`,
   );
 
-export const getImprovement = () => get<Improvement>(`/improvement`);
+export const getImprovement = (high: number) =>
+  get<ImprovementFor>(`/improvement?high=${high}`);
+
+export const getImprovementRound = () => get<Improvement>(`/improvement`);
 
 export const getDecisions = () => get<Decision[]>(`/decisions`);
 
-export const askAgent = (session_id: string, question: string) =>
-  post<AgentResponse>(`/agent`, { session_id, question });
+export const askAgent = (
+  session_id: string,
+  question: string,
+  high: number,
+) => post<AgentResponse>(`/agent`, { session_id, question, high });
 
 export const resetAgent = (session_id: string) =>
   post<{ ok: boolean }>(`/agent/reset`, { session_id });

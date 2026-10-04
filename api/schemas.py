@@ -21,6 +21,7 @@ class CompareRequest(BaseModel):
 class AgentRequest(BaseModel):
     session_id: str
     question: str
+    high: float | None = None
 
 
 class AgentResetRequest(BaseModel):

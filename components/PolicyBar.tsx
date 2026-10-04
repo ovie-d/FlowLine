@@ -19,7 +19,7 @@ export function PolicyBar({ high, onChange }: Props) {
   return (
     <section
       className="flex flex-col rounded-xl border border-[#E3E3DE] bg-white"
-      style={{ padding: "16px 20px", gap: 14 }}
+      style={{ padding: "14px 20px", gap: 12 }}
     >
       <style>{`
         .policy-slider {
@@ -82,7 +82,7 @@ export function PolicyBar({ high, onChange }: Props) {
         }
       `}</style>
 
-      {/* Row 1 */}
+      {/* Row 1: label + policy text | presets */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-baseline gap-3">
           <span className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[#5A5F66]">
@@ -133,26 +133,31 @@ export function PolicyBar({ high, onChange }: Props) {
         </div>
       </div>
 
-      {/* Row 2 */}
-      <label htmlFor="sev" className="sr-only">
-        Severity weight
-      </label>
-      <input
-        id="sev"
-        type="range"
-        min={1}
-        max={8}
-        step={1}
-        value={high}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="policy-slider"
-        style={{ ["--policy-fill" as string]: `${fillPct}%` }}
-      />
-
-      {/* Row 3 */}
-      <div className="flex justify-between text-[12px] text-[#5A5F66]">
-        <span>Frequency</span>
-        <span>Severity</span>
+      {/* Row 2: Frequency · slider · Severity */}
+      <div
+        className="flex items-center"
+        style={{ gap: 12 }}
+      >
+        <span className="shrink-0 text-[12px] text-[#5A5F66]">Frequency</span>
+        <label htmlFor="sev" className="sr-only">
+          Severity weight
+        </label>
+        <input
+          id="sev"
+          type="range"
+          min={1}
+          max={8}
+          step={1}
+          value={high}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="policy-slider"
+          style={{
+            flex: 1,
+            minWidth: 0,
+            ["--policy-fill" as string]: `${fillPct}%`,
+          }}
+        />
+        <span className="shrink-0 text-[12px] text-[#5A5F66]">Severity</span>
       </div>
     </section>
   );

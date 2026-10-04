@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { asDisplayText } from "@/lib/format";
 import type { Decision, TriageDraft } from "@/lib/types";
 import { ChatThread, type ChatMessage } from "./ChatThread";
 import { DecisionLog } from "./DecisionLog";
@@ -38,7 +39,9 @@ export function AgentSidebar({
   const [text, setText] = useState("");
   const threadRef = useRef<HTMLDivElement | null>(null);
   const busy = thinking || approving != null;
-  const pills = suggestionLabels?.length ? suggestionLabels : SUGGESTIONS;
+  const pills = (suggestionLabels?.length ? suggestionLabels : SUGGESTIONS).map(
+    (s) => asDisplayText(s),
+  );
 
   async function submit(q: string) {
     const trimmed = q.trim();
@@ -60,9 +63,11 @@ export function AgentSidebar({
       style={{
         height: "100%",
         minHeight: 0,
+        maxHeight: "100%",
         padding: 16,
         boxSizing: "border-box",
-        width: 380,
+        width: "100%",
+        overflow: "hidden",
       }}
     >
       {/* Title — fixed top */}
@@ -99,16 +104,16 @@ export function AgentSidebar({
           <div className="flex flex-col gap-2">
             {escalateDrafts.map((d) => {
               const done = loggedEscalations.has(d.corridor);
+              const corridor = asDisplayText(d.corridor);
+              const reason = asDisplayText(d.reason);
               return (
                 <div
                   key={d.corridor}
                   className="flex items-center justify-between gap-2.5 rounded-lg border border-[#ECECE7] px-2.5 py-2"
                 >
                   <span className="flex min-w-0 flex-col gap-0.5">
-                    <span className="text-[14px] font-semibold">
-                      {d.corridor}
-                    </span>
-                    <span className="text-[12px] text-[#5A5F66]">{d.reason}</span>
+                    <span className="text-[14px] font-semibold">{corridor}</span>
+                    <span className="text-[12px] text-[#5A5F66]">{reason}</span>
                   </span>
                   <button
                     type="button"

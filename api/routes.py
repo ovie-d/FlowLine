@@ -14,9 +14,9 @@ from fastapi.responses import StreamingResponse
 from api.config import config_from_params
 from api.schemas import AgentRequest, AgentResetRequest, CompareRequest
 from api.sessions import get_history, reset_session, set_history
-from core.agent.loop import UNAVAILABLE, run_agent
+from core.agent.loop import MAX_TOOL_STEPS, UNAVAILABLE, run_agent
 from core.assumptions import get_assumptions
-from core.compare import compare, improvement_round
+from core.compare import compare, improvement_for, improvement_round
 from core.scoring import explain_corridor, score
 from core.storage import read_decisions
 from core.triage import draft_triage
@@ -136,8 +136,14 @@ def corridor(
 
 
 @router.get("/improvement")
-def improvement(top: TopQ = 15) -> dict[str, Any]:
-    return improvement_round(top=top)
+def improvement(
+    top: TopQ = 15,
+    high: Annotated[float | None, Query()] = None,
+) -> dict[str, Any]:
+    if high is None:
+        return improvement_round(top=top)
+    cfg = _cfg_or_422(high, 1.5, 1.0, False)
+    return improvement_for(cfg, top=top)
 
 
 @router.post("/compare")
@@ -170,7 +176,15 @@ def assumptions() -> list[dict[str, Any]]:
 @router.post("/agent")
 def agent(body: AgentRequest) -> dict[str, Any]:
     history = get_history(body.session_id)
-    future = _AGENT_POOL.submit(run_agent, body.question, history)
+    policy: dict[str, Any] | None = None
+    if body.high is not None:
+        if body.high == 1:
+            policy = {"count_only": True}
+        else:
+            policy = {"high": body.high}
+    future = _AGENT_POOL.submit(
+        run_agent, body.question, history, MAX_TOOL_STEPS, policy
+    )
     try:
         result = future.result(timeout=AGENT_TIMEOUT_S)
     except FuturesTimeout:

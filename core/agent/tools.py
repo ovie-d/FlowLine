@@ -276,8 +276,55 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
 ]
 
 
-def dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
+_POLICY_KEYS = frozenset({"high", "medium", "low", "count_only", "weights"})
+
+
+def _has_own_policy(overrides: dict[str, Any] | None) -> bool:
+    if not overrides:
+        return False
+    return any(k in overrides for k in _POLICY_KEYS)
+
+
+def _merge_dashboard_policy(
+    name: str,
+    arguments: dict[str, Any],
+    policy: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Fill missing tool config from the dashboard policy; never override the model."""
+    if not policy:
+        return arguments
+    args = dict(arguments)
+
+    if name in ("get_ranking", "explain_corridor", "auto_triage"):
+        overrides = args.get("config_overrides")
+        existing = overrides if isinstance(overrides, dict) else None
+        if not _has_own_policy(existing):
+            args["config_overrides"] = {**(existing or {}), **policy}
+
+    elif name == "compare":
+        side_a = args.get("a")
+        existing = side_a if isinstance(side_a, dict) else None
+        if not _has_own_policy(existing):
+            args["a"] = {**(existing or {}), **policy}
+
+    elif name == "log_decision":
+        if args.get("policy") is None:
+            args["policy"] = dict(policy)
+        overrides = args.get("config_overrides")
+        existing = overrides if isinstance(overrides, dict) else None
+        if not _has_own_policy(existing):
+            args["config_overrides"] = {**(existing or {}), **policy}
+
+    return args
+
+
+def dispatch_tool(
+    name: str,
+    arguments: dict[str, Any],
+    policy: dict[str, Any] | None = None,
+) -> Any:
     fn = TOOL_FUNCTIONS.get(name)
     if fn is None:
         return {"error": f"Unknown tool: {name}"}
-    return fn(**arguments)
+    merged = _merge_dashboard_policy(name, arguments, policy)
+    return fn(**merged)

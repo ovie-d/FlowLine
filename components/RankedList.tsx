@@ -1,7 +1,13 @@
 "use client";
 
 import type { RankingRow, TriageDraft } from "@/lib/types";
-import { formatMove, moveColor, moveDelta, sevColor } from "@/lib/format";
+import {
+  capitalizeAction,
+  formatMove,
+  moveColor,
+  moveDelta,
+  sevColor,
+} from "@/lib/format";
 import { motion } from "framer-motion";
 
 type Props = {
@@ -17,8 +23,7 @@ type Props = {
   thinCount: number;
 };
 
-const COL =
-  "36px minmax(0, 2fr) minmax(0, 1fr) 52px 104px";
+const COL = "36px minmax(0, 2fr) minmax(0, 1fr) 52px 104px";
 
 export function RankedList({
   rows,
@@ -37,10 +42,21 @@ export function RankedList({
 
   return (
     <section
-      className="min-w-0 rounded-xl border border-[#E3E3DE] bg-white"
-      style={{ flex: "1 1 560px", padding: 16 }}
+      className="flex min-h-0 min-w-0 flex-col rounded-xl border border-[#E3E3DE] bg-white"
+      style={{
+        flex: "1 1 auto",
+        minHeight: 0,
+        height: "100%",
+        padding: 16,
+        boxSizing: "border-box",
+        overflow: "hidden",
+      }}
     >
-      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-3">
+      {/* Card header — fixed */}
+      <div
+        className="mb-2 flex flex-wrap items-baseline justify-between gap-3"
+        style={{ flex: "0 0 auto" }}
+      >
         <div className="text-[15px] font-semibold text-[#15171A]">
           Inspection priority · top 5 of 15
         </div>
@@ -68,72 +84,82 @@ export function RankedList({
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <div className="flex min-w-[600px] flex-col">
-          <div
-            className="grid gap-3 border-b border-[#ECECE7] px-2.5 py-2 text-[12px] text-[#5A5F66]"
-            style={{ gridTemplateColumns: COL }}
-          >
-            <span>#</span>
-            <span>Corridor · reason</span>
-            <span>Risk score</span>
-            <span>Move</span>
-            <span>Agent draft</span>
+      <div
+        className="flex min-h-0 min-w-0 flex-col"
+        style={{ flex: "1 1 auto", minHeight: 0, overflow: "hidden" }}
+      >
+        {/* Column header — fixed */}
+        <div
+          className="grid min-w-[600px] gap-3 border-b border-[#ECECE7] px-2.5 py-2 text-[12px] text-[#5A5F66]"
+          style={{ gridTemplateColumns: COL, flex: "0 0 auto" }}
+        >
+          <span>#</span>
+          <span>Corridor · reason</span>
+          <span>Risk score</span>
+          <span>Move</span>
+          <span>Agent draft</span>
+        </div>
+
+        {/* Rows — scroll */}
+        <div
+          className="min-h-0"
+          style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}
+        >
+          <div className="flex min-w-[600px] flex-col">
+            {visible.map((row) => (
+              <RankRow
+                key={row.corridor}
+                row={row}
+                draft={draftsByCorridor.get(row.corridor)}
+                move={moveDelta(baselineRank.get(row.corridor), row.rank)}
+                selected={selected === row.corridor}
+                maxScore={maxScore}
+                onSelect={() => onSelect(row.corridor)}
+              />
+            ))}
+
+            {rows.length > 5 && (
+              <button
+                type="button"
+                onClick={onToggleExpanded}
+                aria-expanded={expanded}
+                className="flex w-full items-center justify-between gap-3 border-b border-[#F0F0EC] bg-[#FAFAF8] px-2.5 py-3 text-left text-[#15171A]"
+              >
+                <span className="flex flex-wrap items-center gap-2.5">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 14 14"
+                    aria-hidden
+                    style={{
+                      transition: "transform 0.15s",
+                      transform: `rotate(${expanded ? 180 : 0}deg)`,
+                    }}
+                  >
+                    <path
+                      d="M3 5l4 4 4-4"
+                      fill="none"
+                      stroke="#15171A"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  <span className="text-[14px] font-semibold">
+                    {expanded ? "Hide ranks 6–15" : "Show ranks 6–15"}
+                  </span>
+                  <span className="text-[13px] text-[#5A5F66]">
+                    {collapsedSummary}
+                  </span>
+                </span>
+                {thinCount > 0 && (
+                  <span className="whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] font-semibold text-[#8A2E08] bg-[#FDEEE3]">
+                    {thinCount} high risk, low evidence base
+                  </span>
+                )}
+              </button>
+            )}
           </div>
-
-          {visible.map((row) => (
-            <RankRow
-              key={row.corridor}
-              row={row}
-              draft={draftsByCorridor.get(row.corridor)}
-              move={moveDelta(baselineRank.get(row.corridor), row.rank)}
-              selected={selected === row.corridor}
-              maxScore={maxScore}
-              onSelect={() => onSelect(row.corridor)}
-            />
-          ))}
-
-          {rows.length > 5 && (
-            <button
-              type="button"
-              onClick={onToggleExpanded}
-              aria-expanded={expanded}
-              className="flex w-full items-center justify-between gap-3 border-b border-[#F0F0EC] bg-[#FAFAF8] px-2.5 py-3 text-left text-[#15171A]"
-            >
-              <span className="flex flex-wrap items-center gap-2.5">
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 14 14"
-                  aria-hidden
-                  style={{
-                    transition: "transform 0.15s",
-                    transform: `rotate(${expanded ? 180 : 0}deg)`,
-                  }}
-                >
-                  <path
-                    d="M3 5l4 4 4-4"
-                    fill="none"
-                    stroke="#15171A"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                <span className="text-[14px] font-semibold">
-                  {expanded ? "Hide ranks 6–15" : "Show ranks 6–15"}
-                </span>
-                <span className="text-[13px] text-[#5A5F66]">
-                  {collapsedSummary}
-                </span>
-              </span>
-              {thinCount > 0 && (
-                <span className="whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] font-semibold text-[#8A2E08] bg-[#FDEEE3]">
-                  {thinCount} high risk, low evidence base
-                </span>
-              )}
-            </button>
-          )}
         </div>
       </div>
     </section>
@@ -158,9 +184,9 @@ function RankRow({
   const thin = row.confidence === "low";
   const width = Math.max(4, Math.round((100 * row.score) / maxScore));
   const bar = sevColor(row.n_high);
-  const action = draft?.action;
+  const action = draft?.action?.toLowerCase();
   const actionText = action
-    ? `${action}${draft?.priority ? ` ${draft.priority}` : ""}`
+    ? `${capitalizeAction(action)}${draft?.priority ? ` ${draft.priority}` : ""}`
     : "—";
 
   return (
@@ -227,9 +253,9 @@ function ActionBadge({
     return <span className="text-[12px] text-[#6B6F75]">—</span>;
   }
   const style =
-    action === "Escalate"
+    action === "escalate"
       ? { color: "#FFFFFF", background: "#A8370A" }
-      : action === "Inspect"
+      : action === "inspect"
         ? { color: "#1E3A8A", background: "#E8EEFC" }
         : { color: "#3A3E44", background: "#EFEFEB" };
   return (

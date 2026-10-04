@@ -30,14 +30,39 @@ def _client():
     return anthropic.Anthropic(api_key=api_key)
 
 
+def _policy_system_suffix(policy: dict[str, Any]) -> str:
+    if policy.get("count_only"):
+        return (
+            "The planner's dashboard is currently set to: count-only. "
+            "Use this policy for every tool call unless the user explicitly asks "
+            "for a different one, and say which policy you used."
+        )
+    high = policy.get("high", 3)
+    medium = policy.get("medium", 1.5)
+    low = policy.get("low", 1)
+    return (
+        f"The planner's dashboard is currently set to: high {high}x, "
+        f"medium {medium}x, low {low}x. "
+        "Use this policy for every tool call unless the user explicitly asks "
+        "for a different one, and say which policy you used."
+    )
+
+
 def run_agent(
-    message: str,
+    question: str,
     history: list[dict[str, Any]] | None = None,
+    max_steps: int = MAX_TOOL_STEPS,
+    policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Run one user turn. Returns {answer, tool_calls, history}."""
+    """Run one user turn. Returns {answer, tool_calls, history}.
+
+    Optional ``policy`` (e.g. ``{"high": 6}`` or ``{"count_only": True}``) is
+    injected into the system prompt and merged into tool calls when the model
+    omits its own config overrides.
+    """
     load_dotenv()
     messages: list[dict[str, Any]] = list(history or [])
-    messages.append({"role": "user", "content": message})
+    messages.append({"role": "user", "content": question})
 
     try:
         client = _client()
@@ -48,13 +73,16 @@ def run_agent(
     model = os.environ.get("AGENT_MODEL", DEFAULT_MODEL)
     tool_calls: list[dict[str, Any]] = []
     answer = ""
+    system = SYSTEM_PROMPT
+    if policy:
+        system = f"{SYSTEM_PROMPT}\n\n{_policy_system_suffix(policy)}"
 
     try:
-        for _ in range(MAX_TOOL_STEPS):
+        for _ in range(max_steps):
             response = client.messages.create(
                 model=model,
                 max_tokens=2048,
-                system=SYSTEM_PROMPT,
+                system=system,
                 tools=TOOL_SCHEMAS,
                 messages=messages,
             )
@@ -90,7 +118,7 @@ def run_agent(
             for use in uses:
                 name = use.name
                 args = use.input if isinstance(use.input, dict) else {}
-                result = dispatch_tool(name, args)
+                result = dispatch_tool(name, args, policy=policy)
                 tool_calls.append({"name": name, "input": args, "result": result})
                 tool_results.append(
                     {

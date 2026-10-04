@@ -188,12 +188,6 @@ function buildCorridors(
   return { type: "FeatureCollection", features };
 }
 
-const CIRCLE_RADIUS_EXPR = [
-  "*",
-  ["get", "radius"],
-  ["interpolate", ["linear"], ["zoom"], 4, 0.6, 7, 1.0],
-] as const;
-
 function featureHoverInfo(feature: {
   geometry?: { coordinates?: number[] } | { type: string };
   properties?: Record<string, unknown> | null;
@@ -228,18 +222,22 @@ export default function AlbertaMapbox({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const fellBack = useRef(false);
   const loaded = useRef(false);
+  const styleLoadCount = useRef(0);
   const prevSelected = useRef<string | null>(null);
   const [pipelines, setPipelines] = useState<FeatureCollection | null>(null);
   const [cursor, setCursor] = useState<string>("grab");
   const [styleKey, setStyleKey] = useState<StyleKey>(resolveDefaultStyle);
   const [devSwitcher, setDevSwitcher] = useState(false);
+  // Mount overlay layers only after the basemap has loaded (avoids empty dots).
+  const [mapReady, setMapReady] = useState(false);
   const [styleEpoch, setStyleEpoch] = useState(0);
   const [hover, setHover] = useState<HoverInfo | null>(null);
 
   const fallback = useCallback(() => {
     if (fellBack.current || loaded.current) return;
     fellBack.current = true;
-    onFallback();
+    // Defer — Mapbox may fire onError during Layer render.
+    queueMicrotask(() => onFallback());
   }, [onFallback]);
 
   useEffect(() => {
@@ -284,11 +282,14 @@ export default function AlbertaMapbox({
   }, []);
 
   const onStyleReady = useCallback(
-    (map: MapboxMap) => {
+    (map: MapboxMap, remountOverlays: boolean) => {
       if (styleKey === "light-plus") applyLightPlusTint(map);
       fitAlberta();
-      setStyleEpoch((n) => n + 1);
       setHover(null);
+      setMapReady(true);
+      // Remount overlays only on later style swaps — not the first load —
+      // so corridor dots aren't wiped by a remount race.
+      if (remountOverlays) setStyleEpoch((n) => n + 1);
     },
     [styleKey, fitAlberta],
   );
@@ -296,7 +297,11 @@ export default function AlbertaMapbox({
   useEffect(() => {
     const map = mapRef.current?.getMap();
     if (!map) return;
-    const handler = () => onStyleReady(map);
+    const handler = () => {
+      styleLoadCount.current += 1;
+      // First style.load = initial basemap; remount only on later style swaps.
+      onStyleReady(map, styleLoadCount.current > 1);
+    };
     map.on("style.load", handler);
     return () => {
       map.off("style.load", handler);
@@ -306,9 +311,15 @@ export default function AlbertaMapbox({
   useEffect(() => {
     const el = containerRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
+    let first = true;
     const ro = new ResizeObserver(() => {
       mapRef.current?.resize();
-      fitAlberta();
+      // Fit once after layout settles; later resizes only call resize()
+      // so pan/zoom aren't snapped back to Alberta.
+      if (first) {
+        first = false;
+        fitAlberta();
+      }
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -428,7 +439,6 @@ export default function AlbertaMapbox({
         style={{ width: "100%", height: "100%" }}
         minZoom={2.5}
         maxZoom={9}
-        scrollZoom={false}
         dragRotate={false}
         pitchWithRotate={false}
         touchPitch={false}
@@ -437,10 +447,23 @@ export default function AlbertaMapbox({
         interactiveLayerIds={["corridors-circle"]}
         onLoad={(e) => {
           loaded.current = true;
-          onStyleReady(e.target);
+          onStyleReady(e.target, false);
         }}
-        onError={() => {
-          if (!loaded.current) fallback();
+        onError={(e) => {
+          // Ignore transient layer/source noise; only bail on auth/style load failure
+          // before the map has successfully loaded.
+          if (loaded.current) return;
+          const msg = String(
+            (e as { error?: { message?: string } })?.error?.message ?? "",
+          ).toLowerCase();
+          const fatal =
+            msg.includes("unauthorized") ||
+            msg.includes("401") ||
+            msg.includes("403") ||
+            msg.includes("not authorized") ||
+            msg.includes("failed to fetch") ||
+            msg.includes("failed to load style");
+          if (fatal) fallback();
         }}
         onClick={onClick}
         onMouseMove={onMouseMove}
@@ -452,123 +475,136 @@ export default function AlbertaMapbox({
           visualizePitch={false}
         />
 
-        {/* Alberta border — above basemap land, below pipelines */}
-        <Source
-          key={`ab-border-${styleEpoch}`}
-          id="alberta-border"
-          type="geojson"
-          data={AB_BORDER_GEOJSON}
-        >
-          <Layer
-            id="alberta-border-line"
-            type="line"
-            paint={{
-              "line-color": "#8F8A80",
-              "line-width": 1,
-              "line-dasharray": [3, 2],
-              "line-opacity": 0.9,
-            }}
-          />
-        </Source>
+        {mapReady && (
+          <>
+            {/* Alberta border — above basemap land, below pipelines */}
+            <Source
+              key={`ab-border-${styleEpoch}`}
+              id="alberta-border"
+              type="geojson"
+              data={AB_BORDER_GEOJSON}
+            >
+              <Layer
+                id="alberta-border-line"
+                type="line"
+                paint={{
+                  "line-color": "#8F8A80",
+                  "line-width": 1,
+                  "line-dasharray": [3, 2],
+                  "line-opacity": 0.9,
+                }}
+              />
+            </Source>
 
-        {pipelines && (
-          <Source
-            key={`pipelines-${styleEpoch}`}
-            id="pipelines"
-            type="geojson"
-            data={pipelines}
-          >
-            <Layer
-              id="pipelines-line"
-              type="line"
-              paint={{
-                "line-color": "#B9A58F",
-                "line-opacity": 0.8,
-                "line-width": [
-                  "interpolate",
-                  ["linear"],
-                  ["zoom"],
-                  3.5,
-                  1,
-                  7,
-                  1.5,
-                ],
-              }}
-            />
-          </Source>
+            {pipelines && (
+              <Source
+                key={`pipelines-${styleEpoch}`}
+                id="pipelines"
+                type="geojson"
+                data={pipelines}
+              >
+                <Layer
+                  id="pipelines-line"
+                  type="line"
+                  paint={{
+                    "line-color": "#B9A58F",
+                    "line-opacity": 0.8,
+                    "line-width": [
+                      "interpolate",
+                      ["linear"],
+                      ["zoom"],
+                      3.5,
+                      1,
+                      7,
+                      1.5,
+                    ],
+                  }}
+                />
+              </Source>
+            )}
+
+            <Source
+              key={`corridors-${styleEpoch}`}
+              id="corridors"
+              type="geojson"
+              data={corridors}
+            >
+              <Layer
+                id="corridors-circle"
+                type="circle"
+                layout={
+                  {
+                    "circle-sort-key": ["get", "sort_key"],
+                  } as never
+                }
+                paint={
+                  {
+                    "circle-radius": ["get", "radius"],
+                    "circle-color": ["get", "color"],
+                    "circle-stroke-width": 2,
+                    "circle-stroke-color": "#FFFFFF",
+                  } as never
+                }
+              />
+              <Layer
+                id="corridors-selected"
+                type="circle"
+                filter={["==", ["get", "selected"], 1]}
+                paint={
+                  {
+                    "circle-radius": ["+", ["get", "radius"], 4],
+                    "circle-opacity": 0,
+                    "circle-stroke-width": 3,
+                    "circle-stroke-color": "#1D4ED8",
+                  } as never
+                }
+              />
+              <Layer
+                id="corridors-rank"
+                type="symbol"
+                filter={["<=", ["get", "rank"], 5]}
+                layout={
+                  {
+                    "symbol-sort-key": ["get", "sort_key"],
+                    "text-field": ["to-string", ["get", "rank"]],
+                    "text-size": 11,
+                    "text-font": ["DIN Pro Bold", "Arial Unicode MS Bold"],
+                    "text-allow-overlap": true,
+                    "text-ignore-placement": true,
+                  } as never
+                }
+                paint={{
+                  "text-color": "#FFFFFF",
+                }}
+              />
+              {/* Selected corridor name only */}
+              <Layer
+                id="corridors-name-selected"
+                type="symbol"
+                filter={["==", ["get", "selected"], 1]}
+                layout={
+                  {
+                    "symbol-sort-key": ["get", "sort_key"],
+                    "text-field": ["get", "corridor"],
+                    "text-size": 12,
+                    "text-font": [
+                      "DIN Pro Medium",
+                      "Arial Unicode MS Regular",
+                    ],
+                    "text-offset": [1.2, 0],
+                    "text-anchor": "left",
+                    "text-allow-overlap": true,
+                  } as never
+                }
+                paint={{
+                  "text-color": "#15171A",
+                  "text-halo-color": "#FFFFFF",
+                  "text-halo-width": 1.5,
+                }}
+              />
+            </Source>
+          </>
         )}
-
-        <Source
-          key={`corridors-${styleEpoch}`}
-          id="corridors"
-          type="geojson"
-          data={corridors}
-        >
-          <Layer
-            id="corridors-circle"
-            type="circle"
-            layout={{
-              "circle-sort-key": ["get", "sort_key"],
-            }}
-            paint={{
-              "circle-radius": CIRCLE_RADIUS_EXPR as unknown as number,
-              "circle-color": ["get", "color"],
-              "circle-stroke-width": 2,
-              "circle-stroke-color": "#FFFFFF",
-            }}
-          />
-          <Layer
-            id="corridors-selected"
-            type="circle"
-            filter={["==", ["get", "selected"], 1]}
-            paint={{
-              "circle-radius": [
-                "+",
-                CIRCLE_RADIUS_EXPR as unknown as number,
-                4,
-              ],
-              "circle-opacity": 0,
-              "circle-stroke-width": 3,
-              "circle-stroke-color": "#1D4ED8",
-            }}
-          />
-          <Layer
-            id="corridors-rank"
-            type="symbol"
-            filter={["<=", ["get", "rank"], 5]}
-            layout={{
-              "symbol-sort-key": ["get", "sort_key"],
-              "text-field": ["to-string", ["get", "rank"]],
-              "text-size": 11,
-              "text-font": ["DIN Pro Bold", "Arial Unicode MS Bold"],
-              "text-allow-overlap": true,
-              "text-ignore-placement": true,
-            }}
-            paint={{
-              "text-color": "#FFFFFF",
-            }}
-          />
-          {/* Selected corridor name only */}
-          <Layer
-            id="corridors-name-selected"
-            type="symbol"
-            filter={["==", ["get", "selected"], 1]}
-            layout={{
-              "symbol-sort-key": ["get", "sort_key"],
-              "text-field": ["get", "corridor"],
-              "text-size": 12,
-              "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
-              "text-offset": [1.2, 0],
-              "text-anchor": "left",
-              "text-allow-overlap": true,
-            }}
-            paint={{
-              "text-color": "#15171A",
-              "text-halo-color": "#FFFFFF",
-              "text-halo-width": 1.5,
-            }}
-          />
-        </Source>
 
         {hover && (
           <Popup
