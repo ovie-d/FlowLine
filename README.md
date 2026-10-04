@@ -1,36 +1,43 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# FlowLine — Tech Wolves · Case 10
 
-## Getting Started
+IEEE YP Industry Hackathon · Energy & Infrastructure  
+**Pipeline Incident Risk Agent** — Next.js dashboard + FastAPI + `core/` scoring
 
-First, run the development server:
+## Frontend (Next.js)
 
 ```bash
+npm install
+cp .env.example .env.local   # NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Backend (FastAPI + core)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+# edit .env and set ANTHROPIC_API_KEY=sk-ant-...
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# API (one worker — keeps agent sessions + decisions consistent)
+uvicorn api.main:app --reload --workers 1
+# http://127.0.0.1:8000/health
+# http://127.0.0.1:8000/docs
 
-## Learn More
+# Required Case deliverables
+python -m core.deliverables
 
-To learn more about Next.js, take a look at the following resources:
+# Tests
+pytest -q
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Seed data: `data/cer_pipeline_incidents_alberta_2015.csv`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Honesty
 
-## Deploy on Vercel
+We rank historic incident hotspots under an explicit risk policy.  
+We do **not** certify any pipe as safe. The tool supports the integrity
+engineer's decision; it doesn't replace engineering judgment.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See `HANDOFF.md` and `CODING_GUIDELINES.md`.
