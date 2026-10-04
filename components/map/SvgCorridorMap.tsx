@@ -74,6 +74,14 @@ type Props = {
   offlineNote?: boolean;
 };
 
+type HoverTip = {
+  corridor: string;
+  rank: number;
+  score: number;
+  left: number;
+  top: number;
+};
+
 /** Offline SVG Alberta map (used when Mapbox is unavailable). */
 export function SvgCorridorMap({
   ranking,
@@ -83,6 +91,7 @@ export function SvgCorridorMap({
 }: Props) {
   const clipId = useId().replace(/:/g, "");
   const [pipelinePaths, setPipelinePaths] = useState<string[]>([]);
+  const [hover, setHover] = useState<HoverTip | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -111,7 +120,9 @@ export function SvgCorridorMap({
       Number.isFinite(r.lat) &&
       Number.isFinite(r.lon),
   );
-  const dots = [...withCoords].reverse();
+  // Higher ranks drawn first so lower ranks (better priority) sit on top.
+  const dots = [...withCoords].sort((a, b) => b.rank - a.rank);
+  const selectedRow = withCoords.find((r) => r.corridor === selected);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -153,8 +164,10 @@ export function SvgCorridorMap({
             <polygon
               points={AB_POLYGON}
               fill="none"
-              stroke="#BDBDB6"
-              strokeWidth="0.4"
+              stroke="#8F8A80"
+              strokeWidth="0.6"
+              strokeOpacity={0.9}
+              strokeDasharray="3 2"
               vectorEffect="non-scaling-stroke"
             />
           </svg>
@@ -170,8 +183,29 @@ export function SvgCorridorMap({
               <button
                 key={row.corridor}
                 type="button"
-                aria-label={`${row.corridor}, rank ${row.rank}`}
+                aria-label={`${row.corridor}, rank ${row.rank}, score ${row.score.toFixed(1)}`}
+                title={`${row.corridor} · #${row.rank} · ${row.score.toFixed(1)}`}
                 onClick={() => onSelect(row.corridor)}
+                onMouseEnter={() =>
+                  setHover({
+                    corridor: row.corridor,
+                    rank: row.rank,
+                    score: row.score,
+                    left,
+                    top,
+                  })
+                }
+                onMouseLeave={() => setHover(null)}
+                onFocus={() =>
+                  setHover({
+                    corridor: row.corridor,
+                    rank: row.rank,
+                    score: row.score,
+                    left,
+                    top,
+                  })
+                }
+                onBlur={() => setHover(null)}
                 className="absolute p-0 font-mono text-[11px] font-semibold text-white"
                 style={{
                   left: `${left.toFixed(2)}%`,
@@ -186,12 +220,57 @@ export function SvgCorridorMap({
                     ? "0 0 0 3px #1D4ED8"
                     : "0 1px 3px rgba(0,0,0,0.25)",
                   cursor: "pointer",
+                  zIndex: 100 - row.rank,
                 }}
               >
                 {row.rank <= 5 ? row.rank : ""}
               </button>
             );
           })}
+          {selectedRow && (
+            <div
+              className="pointer-events-none absolute whitespace-nowrap text-[12px] font-medium text-[#15171A]"
+              style={{
+                left: `calc(${((((selectedRow.lon as number) + 120) / 10) * 100).toFixed(2)}% + 14px)`,
+                top: `${(((60 - (selectedRow.lat as number)) / 11) * 100).toFixed(2)}%`,
+                transform: "translateY(-50%)",
+                textShadow:
+                  "0 0 2px #fff, 0 0 2px #fff, 1px 0 0 #fff, -1px 0 0 #fff, 0 1px 0 #fff, 0 -1px 0 #fff",
+                zIndex: 200,
+              }}
+            >
+              {selectedRow.corridor}
+            </div>
+          )}
+          {hover && (
+            <div
+              className="pointer-events-none absolute rounded bg-white px-2 py-1 shadow"
+              style={{
+                left: `${hover.left.toFixed(2)}%`,
+                top: `${hover.top.toFixed(2)}%`,
+                transform: "translate(-50%, calc(-100% - 12px))",
+                zIndex: 300,
+                border: "1px solid #E3E3DE",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "#15171A",
+                  lineHeight: 1.3,
+                }}
+              >
+                {hover.corridor}
+              </div>
+              <div
+                className="font-mono"
+                style={{ fontSize: 12, color: "#5A5F66", marginTop: 2 }}
+              >
+                #{hover.rank} · {hover.score.toFixed(1)}
+              </div>
+            </div>
+          )}
         </div>
       </div>
       {offlineNote && (
