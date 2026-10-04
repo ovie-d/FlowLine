@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 
@@ -196,13 +197,29 @@ def test_dispatch_all_six_tools(decisions_file: Path):
     assert "error" in unknown
 
 
-def test_run_agent_no_key_returns_error_payload(monkeypatch):
+def test_run_agent_no_key_returns_error_payload(monkeypatch, tmp_path):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    # Empty/missing .env must not invent a key.
+    monkeypatch.setattr("core.agent.loop.load_dotenv", lambda: None)
     out = run_agent("Explain Sherwood Park")
     assert out.get("error") is True
     assert out["tool_calls"] == []
     assert "unavailable" in out["answer"].lower()
     assert "ranking still works" in out["answer"].lower()
+
+
+def test_load_dotenv_sets_missing_keys(tmp_path, monkeypatch):
+    from core.env import load_dotenv
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("AGENT_MODEL", raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "ANTHROPIC_API_KEY=sk-test-123\nAGENT_MODEL=claude-haiku-4-5-20251001\n"
+    )
+    load_dotenv(env_file)
+    assert os.environ["ANTHROPIC_API_KEY"] == "sk-test-123"
+    assert os.environ["AGENT_MODEL"] == "claude-haiku-4-5-20251001"
 
 
 def test_log_decision_tool_bad_action_returns_error(decisions_file: Path):

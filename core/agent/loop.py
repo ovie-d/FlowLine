@@ -8,6 +8,7 @@ from typing import Any
 
 from core.agent.prompts import SYSTEM_PROMPT
 from core.agent.tools import TOOL_SCHEMAS, dispatch_tool
+from core.env import load_dotenv
 
 MAX_TOOL_STEPS = 8
 DEFAULT_MODEL = "claude-haiku-4-5-20251001"
@@ -34,6 +35,7 @@ def run_agent(
     history: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Run one user turn. Returns {answer, tool_calls, history}."""
+    load_dotenv()
     messages: list[dict[str, Any]] = list(history or [])
     messages.append({"role": "user", "content": message})
 

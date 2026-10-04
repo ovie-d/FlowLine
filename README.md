@@ -7,6 +7,8 @@ IEEE YP Industry Hackathon · Energy & Infrastructure
 
 ```bash
 pip install -r requirements.txt
+cp .env.example .env
+# edit .env and set ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 Seed data: `data/cer_pipeline_incidents_alberta_2015.csv`  
@@ -21,9 +23,9 @@ python -m core.deliverables
 # Tests
 pytest -q
 
-# Agent (needs ANTHROPIC_API_KEY)
-export ANTHROPIC_API_KEY=...
+# Agent (reads ANTHROPIC_API_KEY from .env)
 python -m core.agent.loop "Explain why Sherwood Park ranks first at high=6"
+python -m core.agent.loop "Triage the top 15"
 ```
 
 ## Honesty
