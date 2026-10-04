@@ -9,6 +9,7 @@ import pandas as pd
 
 from core.config import RiskConfig
 from core.data import load_incidents
+from core.labels import LOW_CONFIDENCE_LABEL
 
 
 def _to_jsonable(value: Any) -> Any:
@@ -185,6 +186,9 @@ def explain_corridor(name: str, config: RiskConfig | None = None) -> dict[str, A
         )
     return {
         **match,
+        "confidence_label": (
+            LOW_CONFIDENCE_LABEL if match["confidence"] == "low" else None
+        ),
         "incidents": incidents,
         "causes": (
             group["cause"].value_counts().head(8).astype(int).to_dict()

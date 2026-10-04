@@ -3,15 +3,28 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
 
 from core.agent.loop import run_agent
 from core.agent.tools import TOOL_FUNCTIONS, dispatch_tool, log_decision
-from core.config import DEFAULT
+from core.assumptions import get_assumptions
+from core.config import CONSEQUENCE_HEAVY, DEFAULT
+from core.labels import LOW_CONFIDENCE_LABEL
+from core.scoring import explain_corridor
 from core.storage import append_decision, read_decisions, set_decisions_path
-from core.triage import ESCALATE_MIN_HIGH, draft_triage
+from core.triage import BANNED_REASON_SNIPPETS, ESCALATE_MIN_HIGH, draft_triage
+
+OLD_ASSUMPTION_IDS = {
+    "volume_vs_severity",
+    "facility_events",
+    "gas_threshold",
+    "injuries_medium",
+    "edmonton_sherwood",
+    "triage_escalate_min_high",
+}
 
 
 @pytest.fixture
@@ -63,7 +76,7 @@ def test_draft_triage_shape_and_jenner():
     jenner = next(d for d in result["drafts"] if d["corridor"] == "Jenner")
     assert jenner["action"] == "inspect"
     assert jenner["priority"] == "P3"
-    assert "thin data" in jenner["reason"].lower()
+    assert jenner["reason"].startswith(LOW_CONFIDENCE_LABEL)
 
     by_name = {d["corridor"]: d for d in result["drafts"]}
     for name in ("Sherwood Park", "Edmonton", "Hardisty"):
@@ -71,6 +84,59 @@ def test_draft_triage_shape_and_jenner():
         assert by_name[name]["priority"] == "P1"
     assert by_name["Edson"]["action"] == "inspect"
     assert by_name["Edson"]["action"] != "escalate"
+
+
+def test_plain_english_reasons():
+    result = draft_triage(DEFAULT, top=15)
+    edson = next(d for d in result["drafts"] if d["corridor"] == "Edson")
+    assert "33 incidents" in edson["reason"]
+    assert "2 high-consequence" in edson["reason"]
+
+    jenner = next(d for d in result["drafts"] if d["corridor"] == "Jenner")
+    assert jenner["reason"].startswith(LOW_CONFIDENCE_LABEL)
+
+    for d in result["drafts"]:
+        assert d["reason"]
+        assert re.search(r"\d", d["reason"])
+        lowered = d["reason"].lower()
+        for banned in BANNED_REASON_SNIPPETS:
+            assert banned not in lowered, (d["corridor"], d["reason"], banned)
+
+
+def test_confidence_label_on_explain():
+    jenner = explain_corridor("Jenner")
+    assert jenner["confidence_label"] == LOW_CONFIDENCE_LABEL
+    edson = explain_corridor("Edson")
+    assert edson["confidence_label"] is None
+
+
+def test_mentor_assumption_statuses():
+    rows = {a["id"]: a for a in get_assumptions()}
+    assert OLD_ASSUMPTION_IDS <= set(rows)
+    assert rows["volume_vs_severity"]["status"] == "validated"
+    assert rows["facility_events"]["status"] == "validated"
+    assert rows["gas_threshold"]["status"] == "validated"
+    assert rows["edmonton_sherwood"]["status"] == "validated"
+    assert rows["triage_escalate_min_high"]["status"] == "unvalidated"
+    assert (
+        "pipeline integrity professional"
+        in rows["volume_vs_severity"]["evidence"].lower()
+    )
+
+
+def test_escalate_set_stable_across_heavy_policy():
+    default_set = {
+        d["corridor"]
+        for d in draft_triage(DEFAULT, top=15)["drafts"]
+        if d["action"] == "escalate"
+    }
+    heavy_set = {
+        d["corridor"]
+        for d in draft_triage(CONSEQUENCE_HEAVY, top=15)["drafts"]
+        if d["action"] == "escalate"
+    }
+    expected = {"Sherwood Park", "Edmonton", "Hardisty"}
+    assert default_set == heavy_set == expected
 
 
 def test_r1_escalates_when_n_high_ge_threshold():

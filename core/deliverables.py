@@ -10,6 +10,7 @@ from core.config import (
     LOW_CONSEQUENCE,
 )
 from core.data import load_incidents
+from core.labels import LOW_CONFIDENCE_LABEL
 from core.scoring import score
 
 
@@ -26,7 +27,8 @@ def _jenner_line() -> str:
     weighted = next(r for r in weighted_rows if r["corridor"] == "Jenner")
     return (
         f"Jenner: count-only #{count['rank']} -> weighted #{weighted['rank']} "
-        f"({weighted['n']} incidents, both high; confidence={weighted['confidence']})"
+        f"({weighted['n']} incidents, both high; "
+        f"{LOW_CONFIDENCE_LABEL})"
     )
 
 

@@ -11,8 +11,12 @@ ASSUMPTIONS: list[dict[str, Any]] = [
             "Crew priority should trade off incident volume against consequence "
             "severity under an explicit weight, not count alone."
         ),
-        "status": "unvalidated",
-        "evidence": "",
+        "status": "validated",
+        "evidence": (
+            "Pipeline integrity professional, Oct 3: prioritize serious releases; "
+            "do not just count — combine frequency, severity, volume, proximity, "
+            "asset type, operating conditions, recency."
+        ),
         "affects": ["weights"],
     },
     {
@@ -21,15 +25,23 @@ ASSUMPTIONS: list[dict[str, Any]] = [
             "Facility fires and limit breaches with no release count toward "
             "corridor priority for pipe walks."
         ),
-        "status": "unvalidated",
-        "evidence": "",
+        "status": "validated",
+        "evidence": (
+            "Pipeline integrity professional, Oct 3: facility fires / limit "
+            "breaches are context and risk indicators, not pipe failures; "
+            "keeping a low weight is consistent."
+        ),
         "affects": ["include_facility_events"],
     },
     {
         "id": "gas_threshold",
         "statement": "Gas release >= 10,000 m3 is high consequence",
-        "status": "unvalidated",
-        "evidence": "",
+        "status": "validated",
+        "evidence": (
+            "Pipeline integrity professional, Oct 3: 10,000 m3 is acceptable as "
+            "an initial screening threshold; validate against operator incident "
+            "classifications in production."
+        ),
         "affects": ["gas_high_m3"],
     },
     {
@@ -45,8 +57,11 @@ ASSUMPTIONS: list[dict[str, Any]] = [
             "Edmonton and Sherwood Park are ranked as separate corridors "
             "(including the 'Edmonton & Sherwood Park' label as its own corridor)."
         ),
-        "status": "unvalidated",
-        "evidence": "",
+        "status": "validated",
+        "evidence": (
+            "Pipeline integrity professional, Oct 3: do not assume Edmonton and "
+            "Sherwood Park are the same site without asset IDs / segment metadata."
+        ),
         "affects": ["corridor"],
     },
     {
@@ -56,7 +71,10 @@ ASSUMPTIONS: list[dict[str, Any]] = [
             "high-consequence incidents and confidence is ok."
         ),
         "status": "unvalidated",
-        "evidence": "",
+        "evidence": (
+            "Not asked in mentor session. Note: escalate set is identical at "
+            "high=3 and high=6 on current seed (Sherwood Park, Edmonton, Hardisty)."
+        ),
         "affects": ["ESCALATE_MIN_HIGH"],
     },
 ]
