@@ -111,7 +111,11 @@ a:focus-visible {
   border: 0;
 }
 
-/* Mapbox popups in the command-center theme. */
+/* Mapbox popups in the command-center theme. Hover popups must not capture the
+   pointer, or the map sees the mouse leave the dot and closes them (flicker). */
+.fl-popup {
+  pointer-events: none;
+}
 .fl-popup .mapboxgl-popup-content {
   background: var(--panel);
   color: var(--text);

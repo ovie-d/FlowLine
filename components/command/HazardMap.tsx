@@ -45,7 +45,7 @@ function MapLegend({
   onToggle: (g: HazardGroup) => void;
 }) {
   return (
-    <div className="absolute bottom-2 right-2 max-w-[230px] rounded-md border border-border bg-panel/90 p-2 text-[11px] backdrop-blur">
+    <div className="absolute right-2 top-2 max-h-[calc(100%-3.5rem)] max-w-[230px] overflow-y-auto rounded-md border border-border bg-panel/90 p-2 text-[11px] backdrop-blur">
       <div className="mb-1 font-semibold text-muted">Past incidents by hazard</div>
       <ul className="grid gap-0.5">
         {HAZARD_ORDER.map((g) => (
