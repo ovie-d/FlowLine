@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { geist, geistMono, serif } from "./fonts";
 import { IntroGate } from "@/components/brand/IntroGate";
+import { THEME_BOOT_SCRIPT } from "@/lib/themeBoot";
 import { Providers } from "./providers";
 import "./globals.css";
 
@@ -14,8 +15,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
+      data-theme="dark"
+      suppressHydrationWarning
       className={`${geist.variable} ${geistMono.variable} ${serif.variable} h-full antialiased`}
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
+      </head>
       <body className="min-h-full bg-bg font-sans text-fg">
         <Providers>
           <IntroGate>{children}</IntroGate>

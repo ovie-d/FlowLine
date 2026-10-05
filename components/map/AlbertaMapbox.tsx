@@ -13,6 +13,7 @@ import type { Map as MapboxMap } from "mapbox-gl";
 import type { RankingRow } from "@/lib/types";
 import type { FeatureCollection, Position } from "geojson";
 import "mapbox-gl/dist/mapbox-gl.css";
+import { useTheme } from "@/lib/theme";
 
 const ALBERTA_BOUNDS: [[number, number], [number, number]] = [
   [-120, 49],
@@ -22,10 +23,11 @@ const ALBERTA_BOUNDS: [[number, number], [number, number]] = [
 const LOAD_TIMEOUT_MS = 8000;
 const FIT_PADDING = 16;
 
-type StyleKey = "dark" | "light-plus" | "outdoors" | "streets";
+type StyleKey = "dark" | "light" | "light-plus" | "outdoors" | "streets";
 
 const STYLE_URLS: Record<StyleKey, string> = {
   dark: "mapbox://styles/mapbox/dark-v11",
+  light: "mapbox://styles/mapbox/light-v11",
   "light-plus": "mapbox://styles/mapbox/light-v11",
   outdoors: "mapbox://styles/mapbox/outdoors-v12",
   streets: "mapbox://styles/mapbox/streets-v12",
@@ -228,7 +230,10 @@ export default function AlbertaMapbox({
   const prevSelected = useRef<string | null>(null);
   const [pipelines, setPipelines] = useState<FeatureCollection | null>(null);
   const [cursor, setCursor] = useState<string>("grab");
-  const [styleKey, setStyleKey] = useState<StyleKey>(resolveDefaultStyle);
+  // Basemap follows the app theme unless picked in the dev switcher.
+  const theme = useTheme();
+  const [pickedStyle, setStyleKey] = useState<StyleKey | null>(null);
+  const styleKey: StyleKey = pickedStyle ?? (theme === "light" ? "light" : resolveDefaultStyle());
   // Client-only component (dynamic, ssr: false), so window is available here.
   const [devSwitcher] = useState(() => {
     try {
@@ -613,14 +618,14 @@ export default function AlbertaMapbox({
             closeOnClick={false}
             offset={12}
             anchor="bottom"
-            className="corridor-hover-popup"
+            className="fl-popup corridor-hover-popup"
           >
             <div style={{ padding: "2px 0" }}>
               <div
                 style={{
                   fontSize: 13,
                   fontWeight: 600,
-                  color: "#E6EDF7",
+                  color: "var(--text)",
                   lineHeight: 1.3,
                 }}
               >
@@ -628,7 +633,7 @@ export default function AlbertaMapbox({
               </div>
               <div
                 className="font-mono"
-                style={{ fontSize: 12, color: "#8CA0C3", marginTop: 2 }}
+                style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}
               >
                 #{hover.rank} · {Number(hover.score).toFixed(1)}
               </div>
