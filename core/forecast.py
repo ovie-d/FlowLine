@@ -217,7 +217,7 @@ def _describe(feature: str, row: dict[str, Any], when: date) -> str:
         return f"Time of year ({calendar.month_name[when.month]})"
     if feature.startswith(_MIX_PREFIX):
         label = HAZARD_LABELS[feature[len(_MIX_PREFIX) :]]
-        return f"{v:.0%} of earlier nearby incidents (each site counted once) were {label.lower()}"
+        return f"Earlier nearby incidents that were {label.lower()}: {v:.0%} (each site counted once)"
     missing = _is_missing(v)
     r = f"{AREA_RADIUS_KM:.0f} km"
     texts = {
@@ -244,7 +244,9 @@ def _describe(feature: str, row: dict[str, Any], when: date) -> str:
             v, "nearby site with a known cause", "nearby sites with a known cause"
         ),
         "ah_same_site_n": lambda: (
-            f"{_count(v, 'earlier incident', 'earlier incidents')} at this site (within 1 km)"
+            "No earlier incidents at this exact spot (within 1 km)"
+            if not missing and int(v) == 0
+            else f"{_count(v, 'earlier incident', 'earlier incidents')} at this exact spot (within 1 km)"
         ),
         "ah_days_since_last": lambda: (
             "No earlier incident nearby"

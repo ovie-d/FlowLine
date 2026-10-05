@@ -92,6 +92,7 @@ Backend — `.env` (never commit):
 | `AGENT_MAX_OUTPUT_TOKENS` / `AGENT_BUDGET_USD` | budget guard (default 800 / $15) |
 | `OLLAMA_MODEL` / `OLLAMA_URL` | optional local fallback when Gemini is unreachable |
 | `OSRM_URL` | default `http://localhost:5000` |
+| `MAPBOX_TOKEN` | optional Directions fallback when OSRM is down; must not be URL-restricted |
 
 Frontend — `.env.local`:
 

@@ -205,3 +205,20 @@ def test_bootstrap_ci_brackets_point_and_identical_diff_is_zero() -> None:
         0.0,
         0.0,
     )
+
+
+def test_committed_model_matches_current_features_and_summary() -> None:
+    """The deployed model, the feature code and the evaluation summary must agree."""
+    import json
+
+    from core.forecast import EVAL_SUMMARY_PATH, MODEL_PATH
+
+    model = HazardModel.load(MODEL_PATH)
+    assert model.columns == list(ALL_FEATURES)
+    assert not set(model.columns) & set(
+        WEATHER_FEATURES
+    )  # weather is not a model input
+    summary = json.loads(EVAL_SUMMARY_PATH.read_text())
+    assert summary["features"]["deployed"] == list(ALL_FEATURES)
+    assert summary["features"]["weather_in_model"] is False
+    assert len(model.priors) == len(MODEL_TARGETS)

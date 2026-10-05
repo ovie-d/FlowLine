@@ -40,7 +40,8 @@ Search **Edson** (Next 7 days).
 ## 1:35 — Season matters (35 s)
 Switch to **Pick date**:
 - **January 2027** → equipment failure leads (**40%**).
-- **July 2027** → ground movement shows **">50%, lower certainty"**.
+- **July 2027** → ground movement shows **">50%"** with **"Lower certainty"** under the bar
+  (and "above AB avg" instead of a precise multiple).
 > "The mix shifts with the time of year — learned from history. Above 50% we deliberately
 > say *lower certainty*: on held-out data the model was overconfident there."
 

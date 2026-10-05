@@ -142,9 +142,12 @@ function HazardBar({ h, scaleMax, rank }: { h: ForecastHazard; scaleMax: number;
             {h.low_evidence_group && <span className="ml-1 text-[11px] text-warn">· low evidence</span>}
           </span>
           <span className="shrink-0 font-mono text-fg">
-            {h.display}
+            {h.lower_certainty ? ">50%" : h.display}
             {h.vs_alberta != null && rank < 3 && (
-              <span className="ml-1.5 text-[11px] text-muted">{h.vs_alberta}× AB avg</span>
+              <span className="ml-1.5 text-[11px] text-muted">
+                {/* A precise ratio would reveal the capped probability. */}
+                {h.lower_certainty ? "above AB avg" : `${h.vs_alberta}× AB avg`}
+              </span>
             )}
           </span>
         </div>
@@ -160,6 +163,11 @@ function HazardBar({ h, scaleMax, rank }: { h: ForecastHazard; scaleMax: number;
             }
           />
         </div>
+        {h.lower_certainty && (
+          <div className="mt-0.5 text-[11px] text-warn">
+            Lower certainty — the model was overconfident above 50% on held-out data
+          </div>
+        )}
       </button>
       {open && h.drivers.length > 0 && (
         <ul className="mb-1 ml-2 mt-1 grid gap-0.5 border-l border-border pl-2 text-[11px] text-muted">
