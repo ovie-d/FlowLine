@@ -12,8 +12,9 @@ from pathlib import Path
 
 import pandas as pd
 
+from core.cer import PLACEHOLDER_RE, add_derived, read_dictionary, read_raw
 from core.leakage import CAUTION_V, LEAK_V, leakage_row
-from core.operators import UNKNOWN, commodity_carried, operator_group
+from core.operators import UNKNOWN
 from core.taxonomy import (
     HAZARD_GROUPS,
     HAZARD_LABELS,
@@ -21,28 +22,19 @@ from core.taxonomy import (
     MODEL_TARGETS,
     UNDETERMINED,
     all_hazards,
-    assign_hazard_groups,
     classify_code,
 )
+from core.weather import FEATURE_NAMES as WEATHER_FEATURES
 
 ROOT = Path(__file__).resolve().parent.parent
-RAW = ROOT / "data" / "raw"
-CSV_PATH = RAW / "pipeline-incidents-comprehensive-data.csv"
-DICT_PATH = RAW / "pipeline-incidents-data-dictionary.csv"
 OUT_PATH = ROOT / "docs" / "DATA_PROFILE.md"
-ENCODING = "cp1252"
+WEATHER_PATH = ROOT / "data" / "processed" / "incident_weather.csv"
+WEATHER_AVAILABLE = "yes — ECCC history / Open-Meteo forecast"
 
 TRAIN_END_YEAR = 2021
 SPARSE_NATIONAL = 100
 SPARSE_ALBERTA_TRAIN = 30
 SPARSE_ALBERTA_TEST = 10
-
-PLACEHOLDER_RE = re.compile(
-    r"^(not applicable|not provided|unknown|n/?a|to be determined|"
-    r"under investigation or unknown)$",
-    re.IGNORECASE,
-)
-TZ_RE = r"\s+(Mountain|Eastern|Pacific|Central|Atlantic|Newfoundland)\s*$"
 
 NARRATIVE_CANDIDATES = (
     "Detailed what happened",
@@ -118,30 +110,7 @@ COLUMN_ROLES: dict[str, str] = {
 
 
 def load_raw() -> tuple[pd.DataFrame, pd.DataFrame]:
-    df = pd.read_csv(CSV_PATH, encoding=ENCODING, low_memory=False)
-    dd = pd.read_csv(DICT_PATH, encoding=ENCODING)
-    dd.columns = ["column", "kind", "description"]
-    return df, dd
-
-
-def parse_datetime(s: pd.Series) -> pd.Series:
-    cleaned = s.astype("string").str.replace(TZ_RE, "", regex=True)
-    return pd.to_datetime(cleaned, format="%Y/%m/%d %I:%M:%S %p", errors="coerce")
-
-
-def add_derived(df: pd.DataFrame) -> pd.DataFrame:
-    out = df.copy()
-    out["occurred"] = parse_datetime(out["Occurrence Date and Time"])
-    out["discovered"] = parse_datetime(out["Discovered Date and Time"])
-    out["reported"] = pd.to_datetime(
-        out["Reported Date"], format="%m/%d/%Y", errors="coerce"
-    )
-    out["event_date"] = (
-        out["occurred"].fillna(out["discovered"]).fillna(out["reported"])
-    )
-    out["is_alberta"] = out["Province"].eq("Alberta")
-    out["hazard_group"] = assign_hazard_groups(out)
-    return out
+    return read_raw(), read_dictionary()
 
 
 def norm_name(name: str) -> str:
@@ -593,9 +562,11 @@ def candidate_values(df: pd.DataFrame, source: str) -> pd.Series:
     if source == "_occurred":
         return df["occurred"].dt.month.astype("float")
     if source == "_operator":
-        return df["Company"].map(operator_group)
+        return df["operator_group"]
     if source == "_commodity":
-        return df["Company"].map(commodity_carried).replace(UNKNOWN, pd.NA)
+        return df["commodity"].replace(UNKNOWN, pd.NA)
+    if source.startswith("wx:"):
+        return pd.qcut(df[source[3:]], 10, duplicates="drop").astype("string")
     s = df[source]
     if pd.api.types.is_numeric_dtype(s) and s.nunique() > 20:
         return pd.qcut(s, 10, duplicates="drop").astype("string")
@@ -615,11 +586,28 @@ def feature_decision(verdict: str, available: str) -> str:
     return "candidate" + (" (watch)" if verdict == "caution" else "")
 
 
+def weather_candidates(df: pd.DataFrame) -> tuple[tuple[str, str, str], ...]:
+    """Weather features (Phase 3) as leakage-check rows, if they have been built."""
+    cols = [*WEATHER_FEATURES, "temp_station_km", "precip_station_km"]
+    return tuple(
+        (f"Weather: `{c}`", f"wx:{c}", WEATHER_AVAILABLE) for c in cols if c in df
+    )
+
+
+def attach_weather(df: pd.DataFrame) -> pd.DataFrame:
+    if not WEATHER_PATH.exists():
+        return df
+    wx = pd.read_csv(WEATHER_PATH).drop(columns=["event_date"])
+    return df.merge(
+        wx, left_on="Incident Number", right_on="incident_number", how="left"
+    )
+
+
 def section_leakage(df: pd.DataFrame) -> str:
     model = df[df["hazard_group"].isin(MODEL_TARGETS)]
     y = model["hazard_group"]
     rows = []
-    for label, source, available in CANDIDATE_FEATURES:
+    for label, source, available in CANDIDATE_FEATURES + weather_candidates(model):
         r = leakage_row(candidate_values(model, source), y)
         rows.append(
             [
@@ -686,16 +674,18 @@ def section_leakage(df: pd.DataFrame) -> str:
                 'interpretation: for washouts, "prior 7/30 days" means before discovery.'
             ),
             (
-                "**Weather (Phase 3), distance to pipeline and area history (Phase 6)** are "
-                "computed from independent sources; their missingness vs class is checked "
-                "in `docs/MODEL_REPORT.md` once built."
+                "**Weather** rows come from `scripts/fetch_weather.py` (coverage in "
+                "`docs/WEATHER_COVERAGE.md`); station distance rows test whether *how far "
+                "the nearest usable station is* differs by class. **Distance to pipeline "
+                "and area history** (Phase 6) are computed from independent sources; their "
+                "check goes in `docs/MODEL_REPORT.md`."
             ),
         ]
     )
 
 
 def build_report(raw: pd.DataFrame, dd: pd.DataFrame) -> str:
-    df = add_derived(raw)
+    df = attach_weather(add_derived(raw))
     header = (
         "# CER Pipeline Incident Data — Profile\n\n"
         f"Generated by `scripts/profile_cer.py` on {datetime.now(UTC):%Y-%m-%d} from "
