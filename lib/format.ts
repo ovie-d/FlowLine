@@ -14,8 +14,8 @@ export function formatMove(delta: number | null): string {
 }
 
 export function moveColor(delta: number | null): string {
-  if (delta == null || delta === 0) return "#6B6F75";
-  return delta > 0 ? "#A8370A" : "#1D4ED8";
+  if (delta == null || delta === 0) return "#8CA0C3";
+  return delta > 0 ? "#EF4444" : "#3987E5";
 }
 
 export function formatDate(iso: string | null | undefined): string {
@@ -41,9 +41,9 @@ export function policyText(high: number): string {
 }
 
 export function sevColor(nHigh: number): string {
-  if (nHigh >= 3) return "#A8370A";
-  if (nHigh >= 1) return "#E0904A";
-  return "#9C9FA5";
+  if (nHigh >= 3) return "#EF4444";
+  if (nHigh >= 1) return "#F59E0B";
+  return "#8CA0C3";
 }
 
 const TYPE_SHORT: Record<string, string> = {

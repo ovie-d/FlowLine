@@ -8,7 +8,7 @@ import { SvgCorridorMap } from "./SvgCorridorMap";
 const AlbertaMapbox = dynamic(() => import("./AlbertaMapbox"), {
   ssr: false,
   loading: () => (
-    <div className="flex h-full min-h-0 items-center justify-center rounded-lg bg-[#FAFAF8] text-[12px] text-[#8A8E94]">
+    <div className="flex h-full min-h-0 items-center justify-center rounded-lg bg-panel-2 text-[12px] text-muted">
       Loading map…
     </div>
   ),
@@ -24,15 +24,15 @@ function MapLegend() {
   return (
     <>
       <div
-        className="mt-3 flex flex-wrap gap-3.5 text-[12px] text-[#5A5F66]"
+        className="mt-3 flex flex-wrap gap-3.5 text-[12px] text-muted"
         style={{ flex: "0 0 auto" }}
       >
-        <LegendDot color="#A8370A" label="3+ serious" />
-        <LegendDot color="#E0904A" label="1–2 serious" />
-        <LegendDot color="#9C9FA5" label="minor only" />
+        <LegendDot color="var(--critical)" label="3+ serious" />
+        <LegendDot color="var(--warn)" label="1–2 serious" />
+        <LegendDot color="var(--muted)" label="minor only" />
         <LegendLine label="CER-regulated pipelines" />
       </div>
-      <p className="mt-1.5 text-[11px] text-[#8A8E94]">
+      <p className="mt-1.5 text-[11px] text-muted">
         Pipeline routes: Canada Energy Regulator.
       </p>
     </>
@@ -59,7 +59,7 @@ function LegendLine({ label }: { label: string }) {
         style={{
           width: 14,
           height: 2,
-          background: "#B9A58F",
+          background: "#2DD4BF",
           opacity: 0.85,
           borderRadius: 1,
         }}

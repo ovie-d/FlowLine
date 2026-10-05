@@ -22,15 +22,17 @@ const ALBERTA_BOUNDS: [[number, number], [number, number]] = [
 const LOAD_TIMEOUT_MS = 8000;
 const FIT_PADDING = 16;
 
-type StyleKey = "light-plus" | "outdoors" | "streets";
+type StyleKey = "dark" | "light-plus" | "outdoors" | "streets";
 
 const STYLE_URLS: Record<StyleKey, string> = {
+  dark: "mapbox://styles/mapbox/dark-v11",
   "light-plus": "mapbox://styles/mapbox/light-v11",
   outdoors: "mapbox://styles/mapbox/outdoors-v12",
   streets: "mapbox://styles/mapbox/streets-v12",
 };
 
 const STYLE_BUTTONS: { key: StyleKey; label: string }[] = [
+  { key: "dark", label: "Dark" },
   { key: "light-plus", label: "Light+" },
   { key: "outdoors", label: "Outdoors" },
   { key: "streets", label: "Streets" },
@@ -107,13 +109,13 @@ type HoverInfo = {
 };
 
 function resolveDefaultStyle(): StyleKey {
-  const raw = (process.env.NEXT_PUBLIC_MAP_STYLE ?? "light-plus")
+  const raw = (process.env.NEXT_PUBLIC_MAP_STYLE ?? "dark")
     .trim()
     .toLowerCase();
-  if (raw === "outdoors" || raw === "streets" || raw === "light-plus") {
+  if (raw === "outdoors" || raw === "streets" || raw === "light-plus" || raw === "dark") {
     return raw;
   }
-  return "light-plus";
+  return "dark";
 }
 
 function setPaintSafe(
@@ -131,25 +133,25 @@ function setPaintSafe(
 }
 
 function applyLightPlusTint(map: MapboxMap) {
-  setPaintSafe(map, "background", "background-color", "#F7F5F0");
-  setPaintSafe(map, "land", "background-color", "#F7F5F0");
+  setPaintSafe(map, "background", "background-color", "#1A2A4A");
+  setPaintSafe(map, "land", "background-color", "#1A2A4A");
 
-  setPaintSafe(map, "water", "fill-color", "#BFD8EE");
-  setPaintSafe(map, "water-shadow", "fill-color", "#BFD8EE");
+  setPaintSafe(map, "water", "fill-color", "#1A2A4A");
+  setPaintSafe(map, "water-shadow", "fill-color", "#1A2A4A");
 
-  setPaintSafe(map, "waterway", "line-color", "#9EC4E6");
-  setPaintSafe(map, "waterway-label", "text-color", "#9EC4E6");
+  setPaintSafe(map, "waterway", "line-color", "#8CA0C3");
+  setPaintSafe(map, "waterway-label", "text-color", "#8CA0C3");
 
   for (const id of ["landcover", "landuse", "park", "national-park", "pitch"]) {
-    setPaintSafe(map, id, "fill-color", "#E8EFE3");
+    setPaintSafe(map, id, "fill-color", "#1A2A4A");
     setPaintSafe(map, id, "fill-opacity", 0.35);
   }
 }
 
 function corridorColor(nHigh: number): string {
-  if (nHigh >= 3) return "#A8370A";
-  if (nHigh >= 1) return "#E0904A";
-  return "#9C9FA5";
+  if (nHigh >= 3) return "#EF4444";
+  if (nHigh >= 1) return "#F59E0B";
+  return "#8CA0C3";
 }
 
 function buildCorridors(
@@ -227,7 +229,14 @@ export default function AlbertaMapbox({
   const [pipelines, setPipelines] = useState<FeatureCollection | null>(null);
   const [cursor, setCursor] = useState<string>("grab");
   const [styleKey, setStyleKey] = useState<StyleKey>(resolveDefaultStyle);
-  const [devSwitcher, setDevSwitcher] = useState(false);
+  // Client-only component (dynamic, ssr: false), so window is available here.
+  const [devSwitcher] = useState(() => {
+    try {
+      return new URLSearchParams(window.location.search).get("mapstyle") === "dev";
+    } catch {
+      return false;
+    }
+  });
   // Mount overlay layers only after the basemap has loaded (avoids empty dots).
   const [mapReady, setMapReady] = useState(false);
   const [styleEpoch, setStyleEpoch] = useState(0);
@@ -239,16 +248,6 @@ export default function AlbertaMapbox({
     // Defer — Mapbox may fire onError during Layer render.
     queueMicrotask(() => onFallback());
   }, [onFallback]);
-
-  useEffect(() => {
-    try {
-      setDevSwitcher(
-        new URLSearchParams(window.location.search).get("mapstyle") === "dev",
-      );
-    } catch {
-      setDevSwitcher(false);
-    }
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -398,7 +397,7 @@ export default function AlbertaMapbox({
         <button
           type="button"
           onClick={fitAlberta}
-          className="rounded border border-[#DCDCD7] bg-white px-2 text-[11px] font-semibold text-[#3A3E44]"
+          className="rounded border border-[#24365C] bg-white px-2 text-[11px] font-semibold text-[#E6EDF7]"
           style={{ minHeight: 26, width: "fit-content" }}
         >
           Reset view
@@ -415,9 +414,9 @@ export default function AlbertaMapbox({
                   className="rounded border px-2 text-[11px] font-semibold"
                   style={{
                     minHeight: 26,
-                    background: active ? "#15171A" : "#FFFFFF",
-                    color: active ? "#FFFFFF" : "#3A3E44",
-                    borderColor: active ? "#15171A" : "#DCDCD7",
+                    background: active ? "#E6EDF7" : "#121E36",
+                    color: active ? "#121E36" : "#E6EDF7",
+                    borderColor: active ? "#E6EDF7" : "#24365C",
                   }}
                 >
                   {label}
@@ -488,7 +487,7 @@ export default function AlbertaMapbox({
                 id="alberta-border-line"
                 type="line"
                 paint={{
-                  "line-color": "#8F8A80",
+                  "line-color": "#8CA0C3",
                   "line-width": 1,
                   "line-dasharray": [3, 2],
                   "line-opacity": 0.9,
@@ -507,7 +506,7 @@ export default function AlbertaMapbox({
                   id="pipelines-line"
                   type="line"
                   paint={{
-                    "line-color": "#B9A58F",
+                    "line-color": "#2DD4BF",
                     "line-opacity": 0.8,
                     "line-width": [
                       "interpolate",
@@ -542,7 +541,7 @@ export default function AlbertaMapbox({
                     "circle-radius": ["get", "radius"],
                     "circle-color": ["get", "color"],
                     "circle-stroke-width": 2,
-                    "circle-stroke-color": "#FFFFFF",
+                    "circle-stroke-color": "#121E36",
                   } as never
                 }
               />
@@ -555,7 +554,7 @@ export default function AlbertaMapbox({
                     "circle-radius": ["+", ["get", "radius"], 4],
                     "circle-opacity": 0,
                     "circle-stroke-width": 3,
-                    "circle-stroke-color": "#1D4ED8",
+                    "circle-stroke-color": "#F5A524",
                   } as never
                 }
               />
@@ -574,7 +573,7 @@ export default function AlbertaMapbox({
                   } as never
                 }
                 paint={{
-                  "text-color": "#FFFFFF",
+                  "text-color": "#121E36",
                 }}
               />
               {/* Selected corridor name only */}
@@ -597,8 +596,8 @@ export default function AlbertaMapbox({
                   } as never
                 }
                 paint={{
-                  "text-color": "#15171A",
-                  "text-halo-color": "#FFFFFF",
+                  "text-color": "#E6EDF7",
+                  "text-halo-color": "#121E36",
                   "text-halo-width": 1.5,
                 }}
               />
@@ -621,7 +620,7 @@ export default function AlbertaMapbox({
                 style={{
                   fontSize: 13,
                   fontWeight: 600,
-                  color: "#15171A",
+                  color: "#E6EDF7",
                   lineHeight: 1.3,
                 }}
               >
@@ -629,7 +628,7 @@ export default function AlbertaMapbox({
               </div>
               <div
                 className="font-mono"
-                style={{ fontSize: 12, color: "#5A5F66", marginTop: 2 }}
+                style={{ fontSize: 12, color: "#8CA0C3", marginTop: 2 }}
               >
                 #{hover.rank} · {Number(hover.score).toFixed(1)}
               </div>

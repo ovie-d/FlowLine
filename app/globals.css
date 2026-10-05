@@ -28,25 +28,6 @@
   color-scheme: dark;
 }
 
-/* Existing ranking UI keeps its light look until it is re-themed (Phase 10). */
-.legacy-light {
-  --bg: #f5f5f3;
-  --surface: #ffffff;
-  --ink: #15171a;
-  --muted: #5a5f66;
-  --line: #ecece7;
-  --border: #e3e3de;
-  --sev-high: #a8370a;
-  --sev-mid: #e0904a;
-  --sev-none: #9c9fa5;
-  --thin-bg: #fdeee3;
-  --thin-fg: #8a2e08;
-  --accent: #1d4ed8;
-  --inspect-bg: #e8eefc;
-  --inspect-fg: #1e3a8a;
-  color-scheme: light;
-}
-
 @theme inline {
   --color-bg: var(--bg);
   --color-surface: var(--surface);
@@ -128,4 +109,26 @@ a:focus-visible {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* Mapbox popups in the command-center theme. */
+.fl-popup .mapboxgl-popup-content {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+.fl-popup.mapboxgl-popup-anchor-bottom .mapboxgl-popup-tip {
+  border-top-color: var(--panel);
+}
+.fl-popup.mapboxgl-popup-anchor-top .mapboxgl-popup-tip {
+  border-bottom-color: var(--panel);
+}
+.fl-popup.mapboxgl-popup-anchor-left .mapboxgl-popup-tip {
+  border-right-color: var(--panel);
+}
+.fl-popup.mapboxgl-popup-anchor-right .mapboxgl-popup-tip {
+  border-left-color: var(--panel);
 }

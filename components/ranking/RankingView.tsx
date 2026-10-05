@@ -38,11 +38,12 @@ function normalizeDraft(d: TriageDraft): TriageDraft {
   return { ...d, action: normalizeAction(d.action) };
 }
 
-export default function Home() {
+/** Existing corridor risk ranking (secondary tab of the command center). */
+export default function RankingView() {
   const queryClient = useQueryClient();
   const [high, setHigh] = useState(3);
   const debouncedHigh = useDebounced(high, 250);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [picked, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<"map" | "details">("map");
   const [expanded, setExpanded] = useState(false);
   const [sessionId] = useState(() => crypto.randomUUID());
@@ -82,7 +83,7 @@ export default function Home() {
     queryFn: getDecisions,
   });
 
-  const ranking = rankingQ.data ?? [];
+  const ranking = useMemo(() => rankingQ.data ?? [], [rankingQ.data]);
   const triage = triageQ.data;
 
   const draftsByCorridor = useMemo(() => {
@@ -97,21 +98,11 @@ export default function Home() {
     return map;
   }, [baselineQ.data]);
 
-  // Default / persist selection
-  useEffect(() => {
-    if (ranking.length === 0) return;
-    setSelected((prev) => {
-      if (prev && ranking.some((r) => r.corridor === prev)) return prev;
-      return ranking[0].corridor;
-    });
-  }, [ranking]);
-
-  // Auto-expand when selected is ranks 6–15
-  useEffect(() => {
-    if (!selected) return;
-    const row = ranking.find((r) => r.corridor === selected);
-    if (row && row.rank > 5) setExpanded(true);
-  }, [selected, ranking]);
+  // Default / persist selection (derived, not synced in an effect).
+  const selected =
+    picked && ranking.some((r) => r.corridor === picked)
+      ? picked
+      : (ranking[0]?.corridor ?? null);
 
   const corridorQ = useQuery({
     queryKey: ["corridor", selected, debouncedHigh],
@@ -168,6 +159,9 @@ export default function Home() {
   function selectCorridor(name: string) {
     setSelected(name);
     setTab("details");
+    // Auto-expand when the selection sits in ranks 6–15.
+    const row = ranking.find((r) => r.corridor === name);
+    if (row && row.rank > 5) setExpanded(true);
   }
 
   async function sendQuestion(question: string) {
@@ -260,9 +254,9 @@ export default function Home() {
 
   return (
     <div
-      className="legacy-light bg-[#F5F5F3] text-[#15171A] antialiased"
+      className="bg-bg text-fg antialiased"
       style={{
-        height: "100vh",
+        height: "100%",
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
@@ -274,31 +268,14 @@ export default function Home() {
         className="mx-auto flex w-full min-h-0 flex-1 flex-col"
         style={{ maxWidth: 1600, gap: 14 }}
       >
-        <header
-          className="flex flex-wrap items-end justify-between gap-4"
-          style={{
-            flex: "0 0 auto",
-            paddingBottom: 10,
-            borderBottom: "1px solid #DCDCD7",
-          }}
-        >
-          <div className="flex flex-col gap-1">
-            <h1
-              className="font-display text-[40px] text-[#15171A]"
-              style={{ lineHeight: 1, letterSpacing: "-0.01em" }}
-            >
-              Flowline
-            </h1>
-            <p className="text-[14px] text-[#5A5F66]">
-              Pipeline corridor inspection priority · Alberta · CER incident
-              history 2015 – Aug 2026
-            </p>
-          </div>
-        </header>
+        <p className="text-[13px] text-muted" style={{ flex: "0 0 auto" }}>
+          Corridor inspection priority · Alberta · CER incident history 2015 – Aug 2026 ·
+          historic hotspot ranking under your consequence weight
+        </p>
 
         {backendDown && (
           <div
-            className="rounded-lg border border-[#A8370A]/30 bg-[#FDEEE3] px-3 py-2 text-[13px] text-[#8A2E08]"
+            className="rounded-lg border border-critical/30 bg-thin-bg px-3 py-2 text-[13px] text-warn"
             style={{ flex: "0 0 auto" }}
           >
             Backend unreachable at {process.env.NEXT_PUBLIC_API_URL}. Start
@@ -388,7 +365,7 @@ export default function Home() {
         </div>
 
         <footer
-          className="text-center text-[13px] text-[#5A5F66]"
+          className="text-center text-[13px] text-muted"
           style={{ flex: "0 0 auto", paddingTop: 8 }}
         >
           We rank historic incident hotspots under a stated risk policy. We do
