@@ -3,6 +3,20 @@
 set -uo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Stop a process and all its descendants (background setup runs curl / docker children).
+kill_tree() {
+  local child
+  for child in $(pgrep -P "$1" 2>/dev/null); do kill_tree "$child"; done
+  kill -TERM "$1" 2>/dev/null
+}
+if [[ -f .run/setup.pid ]]; then
+  pid="$(cat .run/setup.pid)"
+  if kill -0 "$pid" 2>/dev/null; then
+    kill_tree "$pid" && echo "stopped background setup ($pid); it resumes on the next start"
+  fi
+  rm -f .run/setup.pid .run/routing-building
+fi
+
 for name in web api; do
   pidfile=".run/$name.pid"
   if [[ -f "$pidfile" ]]; then

@@ -79,16 +79,10 @@ for port in "$API_PORT" "$WEB_PORT"; do
 done
 
 # ---------------------------------------------------------------- services
+# The router only starts here once its data exists; on a first run the data is
+# downloaded and built in the background (below) so the app opens first.
 SERVICES="db"
-if [[ -f osrm/alberta-latest.osrm.mldgr ]]; then
-  SERVICES="db osrm"
-elif [[ -f data/osm/alberta-latest.osm.pbf ]]; then
-  say "Building OSRM routing data (one-time, ~5 minutes)…"
-  if [[ "$DOCKER_MODE" == "sg" ]]; then sg docker -c "scripts/build_osrm.sh"; else scripts/build_osrm.sh; fi
-  SERVICES="db osrm"
-else
-  warn "No OSM extract (data/osm/alberta-latest.osm.pbf): dispatch falls back to Mapbox / straight-line distance."
-fi
+[[ -f osrm/alberta-latest.osrm.mldgr ]] && SERVICES="db osrm"
 say "Starting $SERVICES (docker compose)…"
 dc up -d --wait $SERVICES
 ok "Containers healthy: $SERVICES"
@@ -123,9 +117,12 @@ if [[ "${N_INCIDENTS:-0}" == "0" ]]; then
 fi
 ok "Database ready"
 
-# ---------------------------------------------------------------- river crossings (map layer)
-if [[ -f data/osm/alberta-latest.osm.pbf ]]; then
-  HAS_CROSSINGS="$("$PY" - <<'PYEOF' 2>/dev/null || echo 0
+# ---------------------------------------------------------------- routing + river crossings (background)
+# Optional extras that take minutes on a first run: OSM download, OSRM build, crossings
+# layer. They run in the background (scripts/background_setup.sh); dispatch shows
+# straight-line distance with a "routing is being prepared" warning until OSRM is up.
+rm -f .run/routing-building
+HAS_CROSSINGS="$("$PY" - <<'PYEOF' 2>/dev/null || echo 0
 from core.env import load_dotenv
 load_dotenv()
 from core.pg import try_connect
@@ -134,14 +131,19 @@ sql = "SELECT to_regclass('public.waterway_crossings') IS NOT NULL AS ok"
 print(int(bool(conn and conn.execute(sql).fetchone()["ok"])))
 PYEOF
 )"
-  if [[ "$HAS_CROSSINGS" != "1" ]]; then
-    say "Building the river-crossings map layer from the OSM extract (one-time, a few minutes)…"
-    if "$PY" -m scripts.washout_crossings --layer-only >logs/crossings.log 2>&1; then
-      ok "River-crossings layer built ($(tail -1 logs/crossings.log))"
-    else
-      warn "River-crossings layer not built; see logs/crossings.log (the map works without it)."
-    fi
-  fi
+if [[ -f osrm/alberta-latest.osrm.mldgr && "$HAS_CROSSINGS" == "1" ]]; then
+  :
+elif [[ "${FLOWLINE_ROUTING:-1}" == "0" ]]; then
+  warn "FLOWLINE_ROUTING=0: no road routing (dispatch uses straight-line distance) and no river-crossings layer."
+elif [[ -f .run/setup.pid ]] && kill -0 "$(cat .run/setup.pid)" 2>/dev/null; then
+  say "Background setup is still running (logs/background-setup.log)."
+  [[ -f osrm/alberta-latest.osrm.mldgr ]] || touch .run/routing-building
+else
+  [[ -f osrm/alberta-latest.osrm.mldgr ]] || touch .run/routing-building
+  DOCKER_MODE="$DOCKER_MODE" nohup scripts/background_setup.sh >>logs/background-setup.log 2>&1 &
+  echo $! > .run/setup.pid
+  say "Preparing road routing and river crossings in the background (several minutes; logs/background-setup.log)."
+  say "Until then, dispatch shows straight-line distance with a warning."
 fi
 
 # ---------------------------------------------------------------- app

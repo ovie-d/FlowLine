@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import httpx
 import pytest
 
@@ -105,6 +107,22 @@ def test_nothing_available_gives_straight_line_with_warning() -> None:
     assert out["distance_km"] == pytest.approx(33.6, abs=0.5)
     assert "straight-line" in out["warning"]
     assert out["fallbacks"] == ["osrm: ConnectError", "mapbox: no token"]
+
+
+def test_first_run_build_says_routing_is_being_prepared(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def down(req: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused", request=req)
+
+    marker = tmp_path / "routing-building"
+    monkeypatch.setattr(routing, "ROUTING_BUILDING_MARKER", marker)
+    assert (
+        route(EDSON, SITE, client_for(down))["warning"] == routing.STRAIGHT_LINE_WARNING
+    )
+    marker.touch()
+    out = route(EDSON, SITE, client_for(down))
+    assert out["warning"] == routing.PREPARING_WARNING and out["duration_min"] is None
 
 
 def test_no_road_nearby_is_not_a_route() -> None:

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -27,6 +28,14 @@ MAX_SNAP_KM = 50.0  # beyond this the router has no roads here (e.g. outside Alb
 STRAIGHT_LINE_WARNING = (
     "No road router available — straight-line distance only, no drive time. "
     "Start OSRM (docker compose up -d osrm) or set a Mapbox token."
+)
+PREPARING_WARNING = (
+    "Road routing is still being prepared in the background (first run, several "
+    "minutes) — straight-line distance only, no drive time, until it is ready."
+)
+# Written by scripts/background_setup.sh (.ps1) while the OSRM data is downloaded and built.
+ROUTING_BUILDING_MARKER = (
+    Path(__file__).resolve().parent.parent / ".run" / "routing-building"
 )
 
 
@@ -134,7 +143,9 @@ def route_straight(origin: Point, incident: Point) -> dict[str, Any]:
             "coordinates": [[origin.lon, origin.lat], [incident.lon, incident.lat]],
         },
         "last_mile": None,
-        "warning": STRAIGHT_LINE_WARNING,
+        "warning": PREPARING_WARNING
+        if ROUTING_BUILDING_MARKER.exists()
+        else STRAIGHT_LINE_WARNING,
     }
 
 

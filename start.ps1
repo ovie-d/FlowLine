@@ -77,17 +77,10 @@ foreach ($port in @($ApiPort, $WebPort)) {
 }
 
 # ---------------------------------------------------------------- services
+# The router only starts here once its data exists; on a first run the data is
+# downloaded and built in the background (below) so the app opens first.
 $Services = @("db")
-if (Test-Path "osrm\alberta-latest.osrm.mldgr") {
-  $Services += "osrm"
-} elseif (Test-Path "data\osm\alberta-latest.osm.pbf") {
-  Say "Building OSRM routing data (one-time, ~5 minutes)..."
-  & powershell -ExecutionPolicy Bypass -File scripts\build_osrm.ps1
-  if ($LASTEXITCODE -ne 0) { Die "OSRM build failed." }
-  $Services += "osrm"
-} else {
-  Write-Host "!! No OSM extract: dispatch falls back to Mapbox / straight-line distance." -ForegroundColor Red
-}
+if (Test-Path "osrm\alberta-latest.osrm.mldgr") { $Services += "osrm" }
 Say "Starting $($Services -join ', ') (docker compose)..."
 docker compose up -d --wait @Services
 if ($LASTEXITCODE -ne 0) { Die "docker compose up failed." }
@@ -114,15 +107,29 @@ if (-not $count -or $count -eq "0") {
 }
 Ok "Database ready"
 
-# ---------------------------------------------------------------- river crossings (map layer)
-if (Test-Path "data\osm\alberta-latest.osm.pbf") {
-  $hasX = & $Py -c "from core.env import load_dotenv; load_dotenv(); from core.pg import try_connect; c = try_connect(); print(int(bool(c and c.execute('SELECT to_regclass(%s) IS NOT NULL AS ok', ('public.waterway_crossings',)).fetchone()['ok'])))" 2>$null
-  if ($hasX -ne "1") {
-    Say "Building the river-crossings map layer from the OSM extract (one-time, a few minutes)..."
-    & $Py -m scripts.washout_crossings --layer-only *> logs\crossings.log
-    if ($LASTEXITCODE -eq 0) { Ok "River-crossings layer built" }
-    else { Write-Host "!! River-crossings layer not built; see logs\crossings.log (the map works without it)." -ForegroundColor Red }
-  }
+# ---------------------------------------------------------------- routing + river crossings (background)
+# Optional extras that take minutes on a first run: OSM download, OSRM build, crossings
+# layer. They run in the background (scripts\background_setup.ps1); dispatch shows
+# straight-line distance with a "routing is being prepared" warning until OSRM is up.
+Remove-Item .run\routing-building -ErrorAction SilentlyContinue
+$hasRouter = Test-Path "osrm\alberta-latest.osrm.mldgr"
+$hasX = & $Py -c "from core.env import load_dotenv; load_dotenv(); from core.pg import try_connect; c = try_connect(); print(int(bool(c and c.execute('SELECT to_regclass(%s) IS NOT NULL AS ok', ('public.waterway_crossings',)).fetchone()['ok'])))" 2>$null
+$setupRunning = (Test-Path .run\setup.pid) -and (Get-Process -Id ([int](Get-Content .run\setup.pid)) -ErrorAction SilentlyContinue)
+if ($hasRouter -and $hasX -eq "1") {
+  # nothing to do
+} elseif ($env:FLOWLINE_ROUTING -eq "0") {
+  Write-Host "!! FLOWLINE_ROUTING=0: no road routing (straight-line distance) and no river-crossings layer." -ForegroundColor Red
+} elseif ($setupRunning) {
+  Say "Background setup is still running (logs\background-setup.log)."
+  if (-not $hasRouter) { New-Item -ItemType File -Force -Path .run\routing-building | Out-Null }
+} else {
+  if (-not $hasRouter) { New-Item -ItemType File -Force -Path .run\routing-building | Out-Null }
+  $bg = Start-Process -FilePath "powershell.exe" -PassThru -WindowStyle Hidden `
+    -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts\background_setup.ps1" `
+    -RedirectStandardOutput logs\background-setup.log -RedirectStandardError logs\background-setup.err.log
+  $bg.Id | Set-Content .run\setup.pid
+  Say "Preparing road routing and river crossings in the background (several minutes; logs\background-setup.log)."
+  Say "Until then, dispatch shows straight-line distance with a warning."
 }
 
 # ---------------------------------------------------------------- app
