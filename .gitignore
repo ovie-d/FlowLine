@@ -54,3 +54,12 @@ dist/
 inspection_decisions.json
 pipeline-incidents-comprehensive-data.csv
 *.db
+
+# hazard forecast — large / downloaded data and artifacts
+/data/raw/
+/data/osm/
+/data/weather/
+/data/processed/
+/models/*.bin
+/models/*.pkl
+/osrm/
