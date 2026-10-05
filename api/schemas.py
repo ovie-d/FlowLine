@@ -26,3 +26,21 @@ class AgentRequest(BaseModel):
 
 class AgentResetRequest(BaseModel):
     session_id: str
+
+
+class CrewEntry(BaseModel):
+    crew_type_id: str = Field(min_length=1, max_length=64)
+    equipment: list[str] = Field(default_factory=list)
+    priority: int | None = Field(default=None, ge=1, le=20)
+
+
+class CrewMapUpdate(BaseModel):
+    hazard_group: str
+    crews: list[CrewEntry] = Field(default_factory=list, max_length=12)
+
+
+class DispatchRequest(BaseModel):
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    hazard_group: str
+    k: int = Field(default=3, ge=1, le=10)

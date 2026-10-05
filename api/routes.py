@@ -12,11 +12,19 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from api.config import config_from_params
-from api.schemas import AgentRequest, AgentResetRequest, CompareRequest
+from api.schemas import (
+    AgentRequest,
+    AgentResetRequest,
+    CompareRequest,
+    CrewMapUpdate,
+    DispatchRequest,
+)
 from api.sessions import get_history, reset_session, set_history
 from core.agent.loop import MAX_TOOL_STEPS, UNAVAILABLE, run_agent
 from core.assumptions import get_assumptions
 from core.compare import compare, improvement_for, improvement_round
+from core.crews import CrewMapError, dispatch, get_crews, update_crew_map
+from core.pg import try_connect
 from core.scoring import explain_corridor, score
 from core.storage import read_decisions
 from core.triage import draft_triage
@@ -53,6 +61,17 @@ def _csv_filename(*, high: float, count_only: bool) -> str:
     if float(high).is_integer():
         return f"ranking_high{int(high)}.csv"
     return f"ranking_high{high}.csv".replace(".", "_")
+
+
+def _db_or_503():
+    conn = try_connect()
+    if conn is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Database unavailable — start it with `docker compose up -d db` "
+            "and load it with `python -m scripts.load_postgres`.",
+        )
+    return conn
 
 
 @router.get("/health")
@@ -197,9 +216,7 @@ def agent(body: AgentRequest) -> dict[str, Any]:
     for call in result.get("tool_calls", []) or []:
         if not isinstance(call, dict):
             continue
-        slim_calls.append(
-            {"name": call.get("name"), "input": call.get("input", {})}
-        )
+        slim_calls.append({"name": call.get("name"), "input": call.get("input", {})})
     payload: dict[str, Any] = {
         "answer": result.get("answer", ""),
         "tool_calls": slim_calls,
@@ -218,3 +235,41 @@ def agent_reset(body: AgentResetRequest) -> dict[str, bool]:
 @router.get("/decisions")
 def decisions() -> list[dict[str, Any]]:
     return read_decisions()
+
+
+@router.get("/crews")
+def crews() -> dict[str, Any]:
+    """Hazard -> crew -> equipment table and crew bases (sample data is flagged)."""
+    with _db_or_503() as conn:
+        return get_crews(conn)
+
+
+@router.put("/crews/map")
+def crews_map(body: CrewMapUpdate) -> dict[str, Any]:
+    """Replace the crews and equipment recommended for one hazard group."""
+    with _db_or_503() as conn:
+        try:
+            crews_out = update_crew_map(
+                conn,
+                body.hazard_group,
+                [c.model_dump(exclude_none=True) for c in body.crews],
+            )
+        except CrewMapError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"hazard_group": body.hazard_group, "crews": crews_out}
+
+
+@router.post("/dispatch/route")
+def dispatch_route(body: DispatchRequest) -> dict[str, Any]:
+    """Nearest crew bases with a matching crew, ranked by drive time, with routes."""
+    with _db_or_503() as conn:
+        try:
+            return dispatch(
+                conn,
+                lat=body.latitude,
+                lon=body.longitude,
+                hazard_group=body.hazard_group,
+                k=body.k,
+            )
+        except CrewMapError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc

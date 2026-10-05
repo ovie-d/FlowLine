@@ -12,7 +12,10 @@ from fastapi.responses import JSONResponse
 
 from api.routes import router
 from core.config import DEFAULT
+from core.env import load_dotenv
 from core.scoring import score
+
+load_dotenv()  # DATABASE_URL, OSRM_URL, keys from .env (never overrides real env)
 
 logger = logging.getLogger("api")
 logging.basicConfig(level=logging.INFO, format="%(message)s")
