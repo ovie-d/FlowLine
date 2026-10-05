@@ -26,15 +26,22 @@ cd desktop
 npm ci              # Electron + electron-builder (first time only)
 npm start           # run from the checkout (development)
 npm run dist        # build dist/Flowline-<version>-x86_64.AppImage
-./install-linux.sh  # optional: add Flowline to your desktop menu (no sudo)
+./install-linux.sh            # optional: add Flowline to your app menu (no sudo)
+./install-linux.sh --desktop  # …and a trusted launcher icon on the desktop
+./install-linux.sh --remove   # undo
 ```
 
 - The AppImage remembers the checkout it was built from (`build/flowline-home.json`,
   machine-specific, not committed). To use another checkout, set `FLOWLINE_HOME`.
   If neither works, the app asks for the folder and remembers it.
-- AppImages need FUSE 2. Without `libfuse2`, run with `APPIMAGE_EXTRACT_AND_RUN=1`
-  (`install-linux.sh` sets this for you), or install it: `sudo apt install libfuse2`
-  (`libfuse2t64` on newer Debian/Ubuntu).
+- AppImages need FUSE 2. Without `libfuse2` (Kali and other distros ship only FUSE 3),
+  `install-linux.sh` unpacks the AppImage once into `~/Applications/Flowline` and the
+  menu/desktop entries launch it from there. No FUSE is needed, and startup is faster than
+  `APPIMAGE_EXTRACT_AND_RUN=1`. With libfuse2 installed (`sudo apt install libfuse2`,
+  `libfuse2t64` on newer Debian/Ubuntu) the AppImage runs directly.
+- The desktop icon is made executable and marked trusted for GNOME (`metadata::trusted`)
+  and Xfce 4.18+ (`metadata::xfce-exe-checksum`), so a double-click starts it without a
+  prompt. Re-run the script after rebuilding the AppImage.
 - Apps started from a menu get a short `PATH`. The app borrows your login shell's `PATH`
   so `docker`, `node` and `python3` are found the same way as in a terminal.
 - Logs: `logs/desktop.log` in the Flowline folder (plus the usual `logs/*.log`).
