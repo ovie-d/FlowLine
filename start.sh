@@ -151,7 +151,8 @@ fi
 build_stamp() {
   {
     cat .env.local package-lock.json next.config.ts postcss.config.mjs tsconfig.json 2>/dev/null
-    find app components lib public -type f -print0 2>/dev/null | sort -z | xargs -0 sha256sum
+    # LC_ALL=C: the same order (and stamp) from a terminal or a desktop launcher.
+    find app components lib public -type f -print0 2>/dev/null | LC_ALL=C sort -z | xargs -0 sha256sum
   } | sha256sum | cut -d' ' -f1
 }
 STAMP_FILE=".next/flowline-build-stamp"
