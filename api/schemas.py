@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+import datetime as dt
+
+from pydantic import BaseModel, Field, model_validator
 
 
 class PolicyParams(BaseModel):
@@ -44,3 +46,20 @@ class DispatchRequest(BaseModel):
     longitude: float = Field(ge=-180, le=180)
     hazard_group: str
     k: int = Field(default=3, ge=1, le=10)
+
+
+class ForecastRequest(BaseModel):
+    """Forecast at a point (latitude + longitude) or a ranking corridor by name."""
+
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    corridor: str | None = Field(default=None, max_length=120)
+    date: dt.date | None = None
+    operator_group: str | None = Field(default=None, max_length=64)
+
+    @model_validator(mode="after")
+    def _where(self) -> ForecastRequest:
+        has_point = self.latitude is not None and self.longitude is not None
+        if not has_point and not self.corridor:
+            raise ValueError("give latitude and longitude, or a corridor name")
+        return self
