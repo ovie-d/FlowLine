@@ -66,3 +66,4 @@ pipeline-incidents-comprehensive-data.csv
 
 # agent usage logs (token counts / cost estimates)
 /logs/
+/.run/
