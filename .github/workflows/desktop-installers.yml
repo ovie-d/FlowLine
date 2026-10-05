@@ -1,0 +1,62 @@
+# Builds the Flowline desktop app for Windows (.exe), macOS (.dmg) and Linux (.AppImage)
+# on their own runners. The builds are UNSIGNED and UNTESTED on Windows and macOS:
+# see desktop/README.md for getting past SmartScreen and Gatekeeper.
+# The desktop app is a window around a local Flowline checkout; it still needs Docker,
+# git, Node and Python (install with the one-line installer first).
+name: Desktop installers (unsigned)
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["desktop-v*"]
+  pull_request:
+    paths:
+      - "desktop/**"
+      - ".github/workflows/desktop-installers.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: --win nsis --x64
+            artifact: Flowline-Windows-unsigned
+          - os: macos-latest
+            target: --mac dmg --arm64 --x64
+            artifact: Flowline-macOS-unsigned
+          - os: ubuntu-latest
+            target: --linux AppImage --x64
+            artifact: Flowline-Linux
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci
+      # No checkout path is baked into CI builds: the app asks for the Flowline folder
+      # on first start and remembers it.
+      - run: node scripts/write-home.js --none
+      - name: Build (unsigned)
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npx electron-builder ${{ matrix.target }} --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            desktop/dist/*.exe
+            desktop/dist/*.dmg
+            desktop/dist/*.AppImage
+          if-no-files-found: error
+          retention-days: 30

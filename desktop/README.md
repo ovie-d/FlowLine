@@ -63,19 +63,43 @@ reports whether WebGL works in the app window, and shuts down. It works headless
 xvfb-run -a -s "-screen 0 1600x1000x24" npx electron . --smoke-test=/tmp/flowline.png
 ```
 
-## Windows and macOS (not built or tested yet)
+## Windows and macOS (built by CI, unsigned, UNTESTED)
 
-The code already handles both. What's still needed:
+GitHub Actions (`.github/workflows/desktop-installers.yml`) builds the desktop app on
+Windows (`.exe` installer, NSIS), macOS (`.dmg`, Apple silicon and Intel) and Linux
+(`.AppImage`). It runs on pull requests that touch `desktop/`, on `desktop-v*` tags, or
+by hand (Actions → *Desktop installers* → *Run workflow*). Download the files from the
+run's **Artifacts**. **Nobody has run the Windows or macOS builds yet.**
 
-- **Windows:** build on Windows with `npx electron-builder --win nsis`, and add a
-  `build/icon.ico` (256×256). The app runs `start.ps1 -NoOpen` / `stop.ps1` through
-  PowerShell 5.1+. It needs Docker Desktop (WSL 2 backend), Python 3.11+ and Node 20+ on
-  `PATH`. Unsigned installers trigger SmartScreen; sign with a code-signing certificate
-  for distribution.
-- **macOS:** build on a Mac with `npx electron-builder --mac dmg`, and add a
-  `build/icon.icns`. The app runs `start.sh`, which starts Docker Desktop if needed.
-  Distribution outside your own machine needs an Apple Developer ID, code signing and
-  notarisation, or Gatekeeper blocks the app. Apple-silicon and Intel builds are separate
-  (`--arm64` / `--x64`) or one universal build.
-- Both: the menu `PATH` caveat above applies on macOS (handled the same way). On Windows
-  `PATH` comes from the system environment.
+The desktop app is a window around a Flowline folder, so install Flowline first (the
+one-line installer in the main README). On first start the CI-built app asks for that
+folder (e.g. `C:\Users\you\flowline` or `~/flowline`) and remembers it. Docker Desktop,
+git, Node.js and Python must be installed, as for the command-line route.
+
+The builds are **unsigned** (no code-signing certificate), so the operating system warns
+on first open:
+
+- **Windows SmartScreen** ("Windows protected your PC"): click **More info**, then
+  **Run anyway**. Some company policies block unsigned apps entirely; then use the
+  command-line route (`start.ps1`).
+- **macOS Gatekeeper** ("cannot be opened because the developer cannot be verified"): in
+  Finder, **right-click** Flowline.app, choose **Open**, then **Open** again. On recent
+  macOS, use System Settings → Privacy & Security → **Open Anyway**. If macOS says the app
+  is "damaged", clear the download quarantine flag:
+  `xattr -dr com.apple.quarantine /Applications/Flowline.app`.
+
+For real distribution:
+
+- **Windows:** sign with a code-signing certificate (`CSC_LINK` / `CSC_KEY_PASSWORD` in
+  electron-builder).
+- **macOS:** sign and notarise with an Apple Developer ID (`CSC_LINK`, `APPLE_ID`,
+  `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`).
+
+Both are left out on purpose until there is an owner for the certificates.
+
+Platform notes:
+
+- **Windows:** the app runs `start.ps1 -NoOpen` / `stop.ps1` through Windows PowerShell
+  5.1. Docker Desktop needs the WSL 2 backend. `PATH` comes from the system environment.
+- **macOS:** the app runs `start.sh`, which starts Docker Desktop if needed. Like Linux,
+  it borrows the login shell's `PATH` so Homebrew's `node` / `python3` are found.

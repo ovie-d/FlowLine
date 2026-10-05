@@ -3,6 +3,81 @@
 > *Their models tell you how strong the pipe is. Flowline tells you what kind of trouble
 > to prepare for, and who to send.*
 
+## Try it in 2 minutes
+
+Copy one line into a terminal. It checks what you have, downloads Flowline into
+`~/flowline` and starts it at <http://localhost:3000>. **No keys or accounts needed.**
+
+**Linux / macOS** (Terminal):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ovie-d/FlowLine/main/install.sh | bash
+```
+
+**Windows** (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/ovie-d/FlowLine/main/install.ps1 | iex
+```
+
+**Prefer not to pipe scripts from the internet?** (Common on managed work laptops.) Do the
+same by hand. You can read [`install.sh`](install.sh) / [`install.ps1`](install.ps1) and
+[`start.sh`](start.sh) first:
+
+```bash
+git clone https://github.com/ovie-d/FlowLine.git flowline && cd flowline
+./start.sh                                    # Windows: powershell -ExecutionPolicy Bypass -File start.ps1
+```
+
+**Prerequisites** (install these yourself; the installer links to each one if missing):
+
+| | Linux | macOS | Windows |
+|---|---|---|---|
+| Docker | [Docker Engine](https://docs.docker.com/engine/install/) + your user in the `docker` group | [Docker Desktop](https://docs.docker.com/desktop/setup/install/mac-install/) | [Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/) (WSL 2) |
+| git | package manager | `xcode-select --install` | [git for Windows](https://git-scm.com/download/win) |
+| Node.js 20+ | [nodejs.org](https://nodejs.org/en/download) | [nodejs.org](https://nodejs.org/en/download) | [nodejs.org](https://nodejs.org/en/download) |
+| Python 3.11+ | with `venv` (`python3-venv` on Debian/Ubuntu) | [python.org](https://www.python.org/downloads/) | [python.org](https://www.python.org/downloads/windows/) (with the `py` launcher) |
+
+About 5 GB free disk (packages, Docker images, database, routing data).
+
+> **Docker Desktop licensing.** Docker Desktop is free for personal use, education,
+> non-commercial open source and small businesses, but **companies with more than 250
+> employees or more than US$10 million annual revenue need a paid Docker subscription**.
+> On corporate machines, check with IT before installing it. Docker Engine on Linux is
+> free (open source).
+
+**What the first run does.** It installs the Python and Node packages into the folder
+(nothing system-wide), builds the database from the public CER incident data, builds the
+web app and opens it. On a test machine that already had the packages and Docker images
+cached, it was ready in **under 2 minutes**. A fresh machine also downloads the Python and
+Node packages (about 1.4 GB installed) and builds the database image (about 0.7 GB), so
+expect it to take longer, depending on your connection. Road routing for emergency dispatch is prepared
+**in the background**: the Alberta OpenStreetMap extract (~350 MB) is downloaded and the
+router is built in about 5–10 more minutes. Until then, dispatch shows straight-line
+distance with a "routing is still being prepared" warning. Later starts take under a
+minute.
+
+**Without any keys:**
+
+- **Map:** interactive WebGL map on open basemaps (OpenFreeMap dark/light/streets, Esri
+  satellite imagery). A Mapbox token in `.env.local` switches to Mapbox styles.
+- **AI readiness briefing:** off, with a message saying why. Add a `GEMINI_API_KEY` in
+  `.env` to turn it on.
+- **Everything else** (forecast, evidence, crews, dispatch, ranking) works without keys.
+
+**Before this is merged into `main`**, test the PR branch with
+`curl -fsSL https://raw.githubusercontent.com/ovie-d/FlowLine/hazard-forecast/install.sh | FLOWLINE_BRANCH=hazard-forecast bash`
+(Windows: set `$env:FLOWLINE_BRANCH = "hazard-forecast"` and use the `hazard-forecast`
+URL).
+
+**Desktop app.** A window with the Flowline icon that runs the same launcher and stops
+everything when closed: see [Desktop app](#desktop-app-linux-first) below. Windows and macOS
+builds come from GitHub Actions and are unsigned and untested.
+
+---
+
+## What Flowline does
+
 For any pipeline area and date, Flowline:
 
 1. **Forecasts the mix of likely hazard types** (e.g. 36% ground movement & washout,
@@ -29,38 +104,28 @@ distinguishable from simple history. Details: [`docs/MODEL_REPORT.md`](docs/MODE
 
 ---
 
-## Quick start (fresh clone)
+## What `start.sh` does
 
-Prerequisites: **Docker** (Desktop on macOS/Windows; engine + compose on Linux),
-**Node.js 20+**, **Python 3.11+**, and ~2 GB free disk.
-
-```bash
-git clone https://github.com/ovie-d/FlowLine.git && cd FlowLine
-git checkout hazard-forecast
-
-# Optional but recommended: road routing data (~350 MB, Alberta)
-mkdir -p data/osm
-curl -L -o data/osm/alberta-latest.osm.pbf \
-  https://download.geofabrik.de/north-america/canada/alberta-latest.osm.pbf
-
-./start.sh            # Windows: powershell -ExecutionPolicy Bypass -File start.ps1
-```
-
-`start.sh` (and `start.ps1`) does everything, idempotently:
+`start.sh` (Windows: `start.ps1`) is idempotent. Run it any time:
 
 1. checks Docker is running (starts Docker Desktop on macOS/Windows),
-2. creates `.env` / `.env.local` from `.env.example` if missing,
-3. creates the Python venv and installs Node packages on first run,
-4. builds the OSRM routing data once if the OSM extract is present (~5 min),
-5. starts PostgreSQL + PostGIS + pgvector (and OSRM) with `docker compose`, waits for
-   healthchecks,
-6. loads the database if it is empty (downloads the CER CSVs if needed),
-7. builds and starts the API (:8000) and web app (:3000), then opens
-   <http://localhost:3000>.
+2. creates `.env` / `.env.local` from `.env.example` if missing (no keys needed),
+3. creates the Python venv and installs Node packages on first run (re-installs when
+   `requirements.txt` changes),
+4. starts PostgreSQL + PostGIS + pgvector (and OSRM once its data exists) with
+   `docker compose`, and waits for the healthchecks,
+5. loads the database if it is empty (downloads the CER CSVs if needed),
+6. starts the background setup if routing or the river-crossings layer is missing
+   (`scripts/background_setup.sh`, log in `logs/background-setup.log`; `FLOWLINE_ROUTING=0`
+   skips it),
+7. builds the web app when anything baked into it changed, starts the API (:8000) and the
+   web app (:3000), then opens <http://localhost:3000>.
 
-Stop everything (data is kept): `./stop.sh` (Windows: `stop.ps1`).
-Logs: `logs/api.log`, `logs/web.log`. The Windows scripts are syntax-checked but have not
-been run on Windows yet.
+Stop everything (data is kept): `./stop.sh` (Windows: `stop.ps1`). This also pauses an
+unfinished background setup, which resumes on the next start.
+Logs: `logs/api.log`, `logs/web.log`, `logs/background-setup.log`. The Windows scripts are
+syntax-checked and partly exercised with PowerShell 7 on Linux, but **have not been run on
+Windows yet**.
 
 ### Data steps (what the launcher automates, for reference)
 
@@ -114,7 +179,7 @@ Frontend — `.env.local`:
 | Variable | Purpose |
 |---|---|
 | `NEXT_PUBLIC_API_URL` | default `http://127.0.0.1:8000` |
-| `NEXT_PUBLIC_MAPBOX_TOKEN` | Mapbox `pk.…` token (URL-restricted). Empty = offline Alberta map |
+| `NEXT_PUBLIC_MAPBOX_TOKEN` | Mapbox `pk.…` token (URL-restricted). Empty = keyless open basemaps (MapLibre; OpenFreeMap + Esri imagery) |
 | `NEXT_PUBLIC_MAP_STYLE` | Risk Ranking map only: `dark` (default), `light-plus`, `outdoors`, `streets` |
 
 The forecast and dispatch maps have their own **Map & layers** panel: basemap (Auto follows
@@ -130,8 +195,8 @@ the extract the panel says so. Theme and map choices are remembered per browser.
 
 | Works **without internet** | Needs internet |
 |---|---|
-| Hazard forecast, evidence, crews, crew editor | Mapbox basemap tiles (falls back to the offline Alberta map) |
-| Map (offline Alberta view, incidents, pipelines, bases) | Open-Meteo weather outlook (panel shows "unavailable") |
+| Hazard forecast, evidence, crews, crew editor | Basemaps, Mapbox or open (offline, the map falls back to the offline Alberta view with the same layers) |
+| Map layers (incidents, pipelines, bases, routes) | Open-Meteo weather outlook (panel shows "unavailable") |
 | Emergency dispatch with OSRM drive times (Alberta) | Gemini briefing / chat (falls back to Ollama if `OLLAMA_MODEL` is set) |
 | Risk Ranking, Decision Log, About this model | First-time downloads (CER data, OSM extract, Docker images, packages) |
 
