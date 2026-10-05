@@ -67,3 +67,8 @@ pipeline-incidents-comprehensive-data.csv
 # agent usage logs (token counts / cost estimates)
 /logs/
 /.run/
+
+# Desktop app (Electron)
+desktop/node_modules/
+desktop/dist/
+desktop/build/flowline-home.json

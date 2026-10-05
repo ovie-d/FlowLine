@@ -70,11 +70,26 @@ been run on Windows yet.
 | CER pipeline systems | `python -m scripts.fetch_pipeline_systems` | operator commodity + map layer |
 | Weather (optional) | `python -m scripts.fetch_weather` | ECCC daily data, ~1 hour, resumable; used for similar incidents and context — **not** a model input |
 | Routing (optional) | `scripts/build_osrm.sh` (`.ps1`) | needs `data/osm/alberta-latest.osm.pbf` |
+| River crossings (optional) | `python -m scripts.washout_crossings --layer-only` | same OSM extract; map layer only |
 | Database | `python -m scripts.load_postgres` | idempotent; never overwrites crew-table edits |
 | Profile / evaluation | `python -m scripts.profile_cer`, `python -m scripts.evaluate` | writes `docs/DATA_PROFILE.md`, `docs/MODEL_REPORT.md`, `models/` |
 
 The trained model (`models/hazard_forecast.*`, < 1 MB) is committed, so a fresh clone can
 forecast without retraining.
+
+### Desktop app (Linux first)
+
+`desktop/` wraps the app in its own window (Electron, Flowline icon). It runs the same
+launcher, waits for the health checks, opens the window, and stops everything when you
+close it. **Docker is still required.**
+
+```bash
+cd desktop && npm ci && npm run dist   # → desktop/dist/Flowline-<version>-x86_64.AppImage
+./install-linux.sh                     # optional: add it to the desktop menu
+```
+
+WebGL is forced on (GPU blocklist ignored, software fallback allowed). Details, the
+`libfuse2` note and what Windows/macOS still need are in [desktop/README.md](desktop/README.md).
 
 ---
 

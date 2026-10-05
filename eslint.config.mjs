@@ -17,7 +17,14 @@ const eslintConfig = defineConfig([
     "data/**",
     "osrm/**",
     "logs/**",
+    "desktop/node_modules/**",
+    "desktop/dist/**",
   ]),
+  // Electron main process and preload are CommonJS.
+  {
+    files: ["desktop/**/*.js"],
+    rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
 ]);
 
 export default eslintConfig;

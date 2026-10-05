@@ -1,0 +1,70 @@
+{
+  "name": "flowline-desktop",
+  "productName": "Flowline",
+  "version": "0.1.0",
+  "description": "Flowline Hazard Forecast desktop window (starts the local services)",
+  "private": true,
+  "main": "main.js",
+  "author": "Flowline",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "dist": "node scripts/write-home.js && electron-builder --linux AppImage",
+    "dist:dir": "node scripts/write-home.js && electron-builder --linux dir"
+  },
+  "build": {
+    "appId": "ca.flowline.desktop",
+    "productName": "Flowline",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "splash.html",
+      "build/icon.png"
+    ],
+    "extraResources": [
+      {
+        "from": "build/flowline-home.json",
+        "to": "flowline-home.json"
+      }
+    ],
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "icon": "build/icon.png",
+      "category": "Science",
+      "executableName": "flowline",
+      "artifactName": "Flowline-${version}-${arch}.${ext}",
+      "desktop": {
+        "entry": {
+          "Name": "Flowline",
+          "Comment": "Pipeline hazard forecast and emergency dispatch",
+          "StartupWMClass": "Flowline"
+        }
+      },
+      "syncDesktopName": true
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.png"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "icon": "build/icon.png",
+      "category": "public.app-category.productivity"
+    }
+  },
+  "devDependencies": {
+    "electron": "^44.5.1",
+    "electron-builder": "^26.15.3"
+  },
+  "desktopName": "flowline.desktop"
+}
