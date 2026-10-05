@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-05T16:08:41+00:00",
+  "generated_at": "2026-10-05T16:39:20+00:00",
   "report": "docs/MODEL_REPORT.md",
   "split": {
     "train": "events <= 2021",
@@ -247,6 +247,38 @@
       "lo": -0.124,
       "hi": -0.012,
       "verdict": "area history helps"
+    },
+    {
+      "change": "remove operator",
+      "region": "Canada",
+      "delta": -0.01,
+      "lo": -0.027,
+      "hi": 0.009,
+      "verdict": "no measurable difference"
+    },
+    {
+      "change": "remove operator",
+      "region": "Alberta",
+      "delta": -0.025,
+      "lo": -0.05,
+      "hi": -0.0,
+      "verdict": "no measurable difference"
+    },
+    {
+      "change": "keep only location + area history + season",
+      "region": "Canada",
+      "delta": -0.015,
+      "lo": -0.036,
+      "hi": 0.009,
+      "verdict": "no measurable difference"
+    },
+    {
+      "change": "keep only location + area history + season",
+      "region": "Alberta",
+      "delta": -0.02,
+      "lo": -0.05,
+      "hi": 0.011,
+      "verdict": "no measurable difference"
     }
   ],
   "calibration_above_threshold": {
@@ -257,6 +289,176 @@
     "display_rule": "Probabilities above 50% are shown as '>50%, lower certainty'."
   },
   "low_evidence_rule": "fewer than 3 prior incidents within 25 km",
+  "operator_dependence": [
+    {
+      "subset": "Canada",
+      "n": 430,
+      "skipped": false,
+      "Model (deployed)": [
+        1.794,
+        1.728,
+        1.864
+      ],
+      "Model \u2212 operator": [
+        1.804,
+        1.733,
+        1.877
+      ],
+      "Location + area history + season only": [
+        1.809,
+        1.737,
+        1.881
+      ],
+      "best_baseline": "Baseline: province base rate",
+      "best_baseline_log_loss": 1.948,
+      "delta_Model \u2212 operator": [
+        -0.01,
+        -0.027,
+        0.009
+      ],
+      "delta_Location + area history + season only": [
+        -0.015,
+        -0.036,
+        0.009
+      ],
+      "place_only_vs_baseline": [
+        -0.139,
+        -0.185,
+        -0.091
+      ],
+      "deployed_vs_baseline": [
+        -0.154,
+        -0.198,
+        -0.109
+      ]
+    },
+    {
+      "subset": "Alberta",
+      "n": 164,
+      "skipped": false,
+      "Model (deployed)": [
+        1.862,
+        1.749,
+        1.973
+      ],
+      "Model \u2212 operator": [
+        1.887,
+        1.77,
+        2.002
+      ],
+      "Location + area history + season only": [
+        1.883,
+        1.765,
+        1.995
+      ],
+      "best_baseline": "Baseline: national base rate",
+      "best_baseline_log_loss": 1.944,
+      "delta_Model \u2212 operator": [
+        -0.025,
+        -0.05,
+        -0.0
+      ],
+      "delta_Location + area history + season only": [
+        -0.02,
+        -0.05,
+        0.011
+      ],
+      "place_only_vs_baseline": [
+        -0.061,
+        -0.119,
+        -0.005
+      ],
+      "deployed_vs_baseline": [
+        -0.081,
+        -0.139,
+        -0.022
+      ]
+    },
+    {
+      "subset": "NGTL only",
+      "n": 122,
+      "skipped": false,
+      "Model (deployed)": [
+        1.977,
+        1.858,
+        2.1
+      ],
+      "Model \u2212 operator": [
+        1.974,
+        1.846,
+        2.101
+      ],
+      "Location + area history + season only": [
+        1.955,
+        1.827,
+        2.086
+      ],
+      "best_baseline": "Baseline: national base rate",
+      "best_baseline_log_loss": 2.014,
+      "delta_Model \u2212 operator": [
+        0.003,
+        -0.026,
+        0.032
+      ],
+      "delta_Location + area history + season only": [
+        0.023,
+        -0.009,
+        0.055
+      ],
+      "place_only_vs_baseline": [
+        -0.059,
+        -0.135,
+        0.005
+      ],
+      "deployed_vs_baseline": [
+        -0.037,
+        -0.107,
+        0.028
+      ]
+    },
+    {
+      "subset": "All except NGTL",
+      "n": 308,
+      "skipped": false,
+      "Model (deployed)": [
+        1.722,
+        1.641,
+        1.8
+      ],
+      "Model \u2212 operator": [
+        1.737,
+        1.654,
+        1.821
+      ],
+      "Location + area history + season only": [
+        1.751,
+        1.673,
+        1.832
+      ],
+      "best_baseline": "Baseline: province base rate",
+      "best_baseline_log_loss": 1.904,
+      "delta_Model \u2212 operator": [
+        -0.015,
+        -0.039,
+        0.008
+      ],
+      "delta_Location + area history + season only": [
+        -0.03,
+        -0.059,
+        -0.001
+      ],
+      "place_only_vs_baseline": [
+        -0.153,
+        -0.214,
+        -0.092
+      ],
+      "deployed_vs_baseline": [
+        -0.183,
+        -0.241,
+        -0.125
+      ]
+    }
+  ],
   "deployed_model": {
     "trained_through": "2026",
     "n_train": 1937,

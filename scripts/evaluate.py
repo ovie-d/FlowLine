@@ -64,16 +64,36 @@ K = len(MODEL_TARGETS)
 FULL = "Model (deployed)"
 WITH_WEATHER = "Model + weather (rejected)"
 NO_AREA = "Model − area history"
+NO_OPERATOR = "Model − operator"
+PLACE_ONLY = "Location + area history + season only"
+PLACE_ONLY_FEATURES: tuple[str, ...] = (
+    "latitude",
+    "longitude",
+    "dist_pipeline_km",
+    "doy_sin",
+    "doy_cos",
+    *AREA_FEATURES,
+)
 VARIANTS: dict[str, tuple[str, ...]] = {
     FULL: ALL_FEATURES,
     WITH_WEATHER: (*ALL_FEATURES, *WEATHER_CANDIDATES),
     NO_AREA: tuple(f for f in ALL_FEATURES if f not in AREA_FEATURES),
+    NO_OPERATOR: tuple(f for f in ALL_FEATURES if f != "operator_group"),
+    PLACE_ONLY: PLACE_ONLY_FEATURES,
 }
 # variant -> (change described, meaning when the deployed model is better / worse)
 ABLATION_LABELS: dict[str, tuple[str, str, str]] = {
     WITH_WEATHER: ("add weather back", "weather hurts", "weather helps"),
     NO_AREA: ("remove area history", "area history helps", "area history hurts"),
+    NO_OPERATOR: ("remove operator", "operator helps", "operator hurts"),
+    PLACE_ONLY: (
+        "keep only location + area history + season",
+        "operator / province / commodity help",
+        "they hurt",
+    ),
 }
+OPERATOR_FOCUS = "NGTL"
+MIN_SUBGROUP_N = 30  # smaller operator subsets are not reported
 SUMMARY_PATH = ROOT / "models" / "hazard_forecast.eval.json"
 LOWER_CERTAINTY_ABOVE = 0.5
 
@@ -341,6 +361,8 @@ def ablation_rows(
             d, lo, hi = paired_difference(
                 METRICS["log_loss"], preds[FULL][mask], preds[name][mask], y[mask]
             )
+            # Verdicts use the reported (3-decimal) bounds, so text and tables agree.
+            d, lo, hi = round(d, 3), round(lo, 3), round(hi, 3)
             verdict = (
                 deployed_better
                 if hi < 0
@@ -396,6 +418,184 @@ def section_ablation(
             ),
         ]
     )
+
+
+def operator_rows(
+    preds: dict[str, np.ndarray], y: np.ndarray, X_test: pd.DataFrame, ab: np.ndarray
+) -> list[dict[str, object]]:
+    """Deployed vs operator-free variants on Canada, Alberta, NGTL and other operators."""
+    op = X_test["operator_group"].to_numpy()
+    groups = {
+        "Canada": np.ones(len(y), dtype=bool),
+        "Alberta": ab,
+        f"{OPERATOR_FOCUS} only": op == OPERATOR_FOCUS,
+        f"All except {OPERATOR_FOCUS}": op != OPERATOR_FOCUS,
+    }
+    out = []
+    for label, mask in groups.items():
+        if mask.sum() < MIN_SUBGROUP_N:
+            out.append({"subset": label, "n": int(mask.sum()), "skipped": True})
+            continue
+        sub = {k: v[mask] for k, v in preds.items()}
+        row: dict[str, object] = {
+            "subset": label,
+            "n": int(mask.sum()),
+            "skipped": False,
+        }
+        for name in (FULL, NO_OPERATOR, PLACE_ONLY):
+            row[name] = [
+                round(v, 3) for v in bootstrap(METRICS["log_loss"], sub[name], y[mask])
+            ]
+        ref = best_baseline(sub, y[mask])
+        row["best_baseline"] = ref
+        row["best_baseline_log_loss"] = round(METRICS["log_loss"](sub[ref], y[mask]), 3)
+        for name in (NO_OPERATOR, PLACE_ONLY):
+            d, lo, hi = paired_difference(
+                METRICS["log_loss"], sub[FULL], sub[name], y[mask]
+            )
+            row[f"delta_{name}"] = [round(d, 3), round(lo, 3), round(hi, 3)]
+        d, lo, hi = paired_difference(
+            METRICS["log_loss"], sub[PLACE_ONLY], sub[ref], y[mask]
+        )
+        row["place_only_vs_baseline"] = [round(d, 3), round(lo, 3), round(hi, 3)]
+        d, lo, hi = paired_difference(METRICS["log_loss"], sub[FULL], sub[ref], y[mask])
+        row["deployed_vs_baseline"] = [round(d, 3), round(lo, 3), round(hi, 3)]
+        out.append(row)
+    return out
+
+
+def _ci_text(v: list[float]) -> str:
+    return f"{v[0]:+.3f} [{v[1]:+.3f}, {v[2]:+.3f}]"
+
+
+def operator_note(rows: list[dict[str, object]]) -> str:
+    """Plain-language answer, built from the computed intervals."""
+    canada = rows[0]
+    d_op, d_place, vs_base = (
+        canada[f"delta_{NO_OPERATOR}"],
+        canada[f"delta_{PLACE_ONLY}"],
+        canada["place_only_vs_baseline"],
+    )
+    op_matters = d_op[2] < 0
+    place_beats = vs_base[2] < 0
+    parts = [
+        (
+            "**Is the model learning hazards or each operator's reporting habits?** "
+            "The data cannot fully separate the two: an operator's incident mix reflects both "
+            "what it runs (compressor stations vs liquid terminals vs line pipe) and how it "
+            "reports and codes causes. What the numbers do show:"
+        )
+    ]
+    parts.append(
+        f"- Removing the operator {'makes the forecast measurably worse' if op_matters else 'makes no measurable difference'} "
+        f"(Canada Δ {_ci_text(d_op)})."
+    )
+    parts.append(
+        "- A model with **no operator, province or commodity** — only where, when in the "
+        "year, and what happened nearby before — "
+        + (
+            "still beats the best simple baseline"
+            if place_beats
+            else "does not beat the best simple baseline"
+        )
+        + f" (Canada Δ vs baseline {_ci_text(vs_base)}); it is "
+        f"{'measurably worse than' if d_place[2] < 0 else 'not measurably different from'} "
+        f"the deployed model (Δ {_ci_text(d_place)})."
+    )
+    if op_matters and place_beats:
+        parts.append(
+            "- Reading: part of the skill comes from place and local history alone, which is "
+            "hard to explain as reporting habit; the extra skill from the operator may be "
+            "asset type, reporting practice, or both. Treat operator-driven differences in a "
+            "forecast as *“this operator's history looks like this”*, not as a physical cause."
+        )
+    elif op_matters:
+        parts.append(
+            "- Reading: most of the skill depends on the operator. That is consistent with "
+            "learning each operator's reporting and coding habits as much as physical hazards; "
+            "forecasts should be presented as operator-history patterns."
+        )
+    else:
+        parts.append(
+            "- Reading: the operator adds little beyond place and local history, so the "
+            "forecast is not mainly an operator reporting signal."
+        )
+    for r in rows[1:]:
+        if r["skipped"]:
+            parts.append(
+                f"- {r['subset']}: too few test incidents (n = {r['n']}) to report."
+            )
+            continue
+        d = r[f"delta_{NO_OPERATOR}"]
+        verdict = (
+            "operator helps"
+            if d[2] < 0
+            else "operator hurts"
+            if d[1] > 0
+            else "no measurable difference from removing the operator"
+        )
+        vb = r["deployed_vs_baseline"]
+        base_verdict = (
+            "beats"
+            if vb[2] < 0
+            else "is worse than"
+            if vb[1] > 0
+            else "is not distinguishable from"
+        )
+        parts.append(
+            f"- {r['subset']} (n = {r['n']}): {verdict} (Δ {_ci_text(d)}); the deployed model "
+            f"{base_verdict} the best baseline here "
+            f"({r['best_baseline'].replace('Baseline: ', '')}, Δ {_ci_text(vb)})."
+        )
+    return "\n".join(parts)
+
+
+def section_operator(
+    preds: dict[str, np.ndarray], y: np.ndarray, X_test: pd.DataFrame, ab: np.ndarray
+) -> tuple[str, list[dict[str, object]]]:
+    rows = operator_rows(preds, y, X_test, ab)
+    table = []
+    for r in rows:
+        if r["skipped"]:
+            table.append(
+                [r["subset"], r["n"], f"too few (< {MIN_SUBGROUP_N})", "", "", "", ""]
+            )
+            continue
+        table.append(
+            [
+                r["subset"],
+                r["n"],
+                fmt_ci(*r[FULL]),
+                fmt_ci(*r[NO_OPERATOR]),
+                fmt_ci(*r[PLACE_ONLY]),
+                f"{r['best_baseline_log_loss']:.3f} ({r['best_baseline'].replace('Baseline: ', '')})",
+                _ci_text(r[f"delta_{NO_OPERATOR}"]),
+            ]
+        )
+    text = "\n\n".join(
+        [
+            "## 4b. Operator dependence",
+            (
+                "Operator is the strongest input (§7). Log loss with 95% CI on the 2022+ test set; "
+                "the last column is deployed − without operator (negative = operator helps). "
+                "The deployed model is unchanged by this analysis."
+            ),
+            md_table(
+                [
+                    "test subset",
+                    "n",
+                    "deployed",
+                    "− operator",
+                    "location + area history + season",
+                    "best baseline",
+                    "Δ deployed − (− operator)",
+                ],
+                table,
+            ),
+            operator_note(rows),
+        ]
+    )
+    return text, rows
 
 
 def mix_table(preds: dict[str, np.ndarray], y: np.ndarray, names: list[str]) -> str:
@@ -719,6 +919,7 @@ def write_summary(
     ab: np.ndarray,
     rolling: list[dict[str, object]],
     deployable: HazardModel,
+    operator_data: list[dict[str, object]],
 ) -> None:
     summary = {
         "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
@@ -743,6 +944,7 @@ def write_summary(
         ],
         "calibration_above_threshold": high_confidence_calibration(preds[FULL], y),
         "low_evidence_rule": "fewer than 3 prior incidents within 25 km",
+        "operator_dependence": operator_data,
         "deployed_model": {
             "trained_through": deployable.meta.get("trained_through"),
             "n_train": deployable.meta.get("n_train"),
@@ -777,6 +979,7 @@ def main() -> None:
     ab_te = ab[test_mask].to_numpy()
     plot_calibration(preds, yte)
     rolling_text, rolling = section_rolling(X, y, years, ab)
+    operator_text, operator_data = section_operator(preds, yte, X[test_mask], ab_te)
     body = [
         "# Flowline Hazard Forecast — Model Report",
         (
@@ -789,6 +992,7 @@ def main() -> None:
         split_text,
         rolling_text,
         section_ablation(preds, yte, ab_te),
+        operator_text,
         section_failures(preds, yte, X[test_mask], ab_te),
         section_washout(preds, yte, X[test_mask], ab_te, df, years),
         section_shap(models[FULL], X[test_mask]),
@@ -797,7 +1001,7 @@ def main() -> None:
     REPORT_PATH.write_text("\n\n".join(body) + "\n", encoding="utf-8")
     print(f"wrote {REPORT_PATH.relative_to(ROOT)}")
     deployable = train_deployable(X, y, years)
-    write_summary(preds, yte, ab_te, rolling, deployable)
+    write_summary(preds, yte, ab_te, rolling, deployable, operator_data)
     print(f"wrote {SUMMARY_PATH.relative_to(ROOT)}")
     print(
         f"saved deployable model ({deployable.meta['rounds']} rounds) to "
