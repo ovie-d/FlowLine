@@ -8,7 +8,6 @@ import io
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeout
 from typing import Annotated, Any
-from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -17,17 +16,20 @@ from api.config import config_from_params
 from api.schemas import (
     AgentRequest,
     AgentResetRequest,
+    BriefingRequest,
     CompareRequest,
     CrewMapUpdate,
     DispatchRequest,
     ForecastRequest,
 )
 from api.sessions import get_history, reset_session, set_history
-from core.agent.loop import MAX_TOOL_STEPS, UNAVAILABLE, run_agent
+from core.agent import llm
+from core.agent.budget import usage_summary
+from core.agent.loop import MAX_TOOL_STEPS, UNAVAILABLE, run_agent, run_briefing
 from core.assumptions import get_assumptions
 from core.compare import compare, improvement_for, improvement_round
 from core.crews import CrewMapError, dispatch, get_crews, update_crew_map
-from core.forecast import corridor_location, forecast, model_info
+from core.forecast import alberta_today, corridor_location, forecast, model_info
 from core.insights import washout_insight
 from core.pg import try_connect
 from core.readiness import readiness
@@ -228,6 +230,15 @@ def agent(body: AgentRequest) -> dict[str, Any]:
         "answer": result.get("answer", ""),
         "tool_calls": slim_calls,
     }
+    for key in (
+        "numbers_verified",
+        "unsupported_numbers",
+        "provider",
+        "usage",
+        "reason",
+    ):
+        if key in result:
+            payload[key] = result[key]
     if result.get("error"):
         payload["error"] = True
     return payload
@@ -282,14 +293,6 @@ def dispatch_route(body: DispatchRequest) -> dict[str, Any]:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-LOCAL_TZ = ZoneInfo("America/Edmonton")
-
-
-def _today() -> dt.date:
-    """Today's date in Alberta (forecast dates are local calendar days)."""
-    return dt.datetime.now(LOCAL_TZ).date()
-
-
 def _point_or_404(
     conn: Any, lat: float | None, lon: float | None, corridor: str | None
 ) -> tuple[float, float]:
@@ -314,7 +317,7 @@ def forecast_route(body: ForecastRequest) -> dict[str, Any]:
             conn,
             lat=lat,
             lon=lon,
-            when=body.date or _today(),
+            when=body.date or alberta_today(),
             operator_group=body.operator_group,
         )
     if body.corridor:
@@ -361,7 +364,7 @@ def similar_route(
             conn,
             lat=lat,
             lon=lon,
-            when=date or _today(),
+            when=date or alberta_today(),
             weather=weather,
             commodity=commodity,
             k=k,
@@ -383,7 +386,7 @@ def readiness_route(
             conn,
             lat=la,
             lon=lo,
-            start=start or _today(),
+            start=start or alberta_today(),
             operator_group=operator_group,
         )
 
@@ -402,3 +405,39 @@ def washout_route() -> dict[str, Any]:
     """Observed post-2022 washout pattern in Alberta (not a model forecast)."""
     with _db_or_503() as conn:
         return washout_insight(conn)
+
+
+@router.get("/agent/status")
+def agent_status() -> dict[str, Any]:
+    """Whether the AI briefing/chat is available (no key = disabled, app still works)."""
+    return {**llm.status(), "usage": usage_summary()}
+
+
+@router.get("/agent/usage")
+def agent_usage() -> dict[str, Any]:
+    """Token usage and estimated spend from logs/agent_usage.jsonl (dev-console counter)."""
+    return usage_summary()
+
+
+@router.post("/briefing")
+def briefing(body: BriefingRequest) -> dict[str, Any]:
+    """Readiness briefing written by the agent; every number comes from tool results."""
+    if not llm.status()["available"]:
+        return {**UNAVAILABLE, "reason": llm.status()["reason"]}
+    future = _AGENT_POOL.submit(
+        run_briefing,
+        latitude=body.latitude,
+        longitude=body.longitude,
+        corridor=body.corridor,
+        start=body.start.isoformat() if body.start else None,
+        operator_group=body.operator_group,
+    )
+    try:
+        result = future.result(timeout=AGENT_TIMEOUT_S)
+    except FuturesTimeout:
+        return {**UNAVAILABLE, "reason": "The briefing timed out."}
+    result["tool_calls"] = [
+        {"name": c.get("name"), "input": c.get("input", {})}
+        for c in result.get("tool_calls", [])
+    ]
+    return result

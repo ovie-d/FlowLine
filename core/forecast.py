@@ -16,10 +16,11 @@ from __future__ import annotations
 import calendar
 import json
 import math
-from datetime import date
+from datetime import date, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
@@ -32,6 +33,7 @@ from core.taxonomy import HAZARD_LABELS, LOW_EVIDENCE_GROUPS, MODEL_TARGETS
 
 MODEL_PATH = Path(__file__).resolve().parent.parent / "models" / "hazard_forecast"
 EVAL_SUMMARY_PATH = MODEL_PATH.with_suffix(".eval.json")
+LOCAL_TZ = ZoneInfo("America/Edmonton")
 LOW_EVIDENCE_PRIOR = 3
 LOWER_CERTAINTY_ABOVE = 0.5
 DRIVERS_PER_HAZARD = 3
@@ -85,6 +87,11 @@ def history(conn: psycopg.Connection) -> History:
 
 
 POINT = "ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)::geography"
+
+
+def alberta_today() -> date:
+    """Today's calendar date in Alberta (forecast dates are local days)."""
+    return datetime.now(LOCAL_TZ).date()
 
 
 def resolve_context(

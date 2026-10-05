@@ -63,3 +63,20 @@ class ForecastRequest(BaseModel):
         if not has_point and not self.corridor:
             raise ValueError("give latitude and longitude, or a corridor name")
         return self
+
+
+class BriefingRequest(BaseModel):
+    """Readiness briefing for a point or corridor and the week starting `start`."""
+
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    corridor: str | None = Field(default=None, max_length=120)
+    start: dt.date | None = None
+    operator_group: str | None = Field(default=None, max_length=64)
+
+    @model_validator(mode="after")
+    def _where(self) -> BriefingRequest:
+        has_point = self.latitude is not None and self.longitude is not None
+        if not has_point and not self.corridor:
+            raise ValueError("give latitude and longitude, or a corridor name")
+        return self
