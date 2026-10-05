@@ -282,3 +282,31 @@ export type Corridor = {
   latitude: number;
   longitude: number;
 };
+
+export type IncidentDetail = {
+  incident_number: string;
+  date: string;
+  date_source: "occurred" | "discovered" | "reported";
+  place: string;
+  province: string;
+  latitude: number;
+  longitude: number;
+  hazard_group: HazardGroup;
+  hazard_label: string;
+  operator: string;
+  operator_group: string;
+  commodity: string;
+  status: string | null;
+  incident_types: string[];
+  what_happened: string[];
+  what_detail: string[];
+  why: string[];
+  why_detail: string[];
+  cause_determined: boolean;
+  source: string;
+};
+
+export type CrossingsLayer = GeoJSON.FeatureCollection<GeoJSON.Point> & {
+  available: boolean;
+  note: string;
+};

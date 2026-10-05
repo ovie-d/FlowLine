@@ -6,7 +6,6 @@ import { useEffect, useMemo, useState } from "react";
 import { DecisionLog } from "@/components/DecisionLog";
 import { getDecisions } from "@/lib/api";
 import {
-  dispatchRoute,
   getAgentStatus,
   getBriefing,
   getCorridors,
@@ -27,8 +26,14 @@ import { Footer } from "./Footer";
 import { ForecastPanel, PanelMessage } from "./ForecastPanel";
 import { HazardMap } from "./HazardMap";
 import type { MapFocus } from "./mapTypes";
-import { ReadinessDrawer, type DispatchState } from "./ReadinessDrawer";
+import { ReadinessDrawer } from "./ReadinessDrawer";
+import type { DispatchPoint } from "@/components/dispatch/DispatchView";
 import { TopBar, type Mode, type Tab } from "./TopBar";
+
+const DispatchView = dynamic(() => import("@/components/dispatch/DispatchView"), {
+  ssr: false,
+  loading: () => <div className="m-4 h-64 animate-pulse rounded-lg bg-panel" />,
+});
 
 const RankingView = dynamic(() => import("@/components/ranking/RankingView"), {
   ssr: false,
@@ -51,15 +56,6 @@ function errorText(e: unknown): string | null {
   return e ? (e instanceof Error ? e.message : String(e)) : null;
 }
 
-const INITIAL_DISPATCH: DispatchState = {
-  picking: false,
-  hazard: "equipment_failure",
-  result: null,
-  loading: false,
-  error: null,
-  activeBase: null,
-};
-
 export function CommandCenter() {
   const [tab, setTab] = useState<Tab>("forecast");
   const [where, setWhere] = useState<Where | null>(null);
@@ -70,9 +66,10 @@ export function CommandCenter() {
   const [date, setDate] = useState(today);
   const [operator, setOperator] = useState<string | null>(null);
   const [focus, setFocus] = useState<MapFocus | null>(null);
-  const [hidden, setHidden] = useState<Set<HazardGroup>>(new Set());
+  const [highlight, setHighlight] = useState<HazardGroup | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(true);
-  const [dispatch, setDispatch] = useState<DispatchState>(INITIAL_DISPATCH);
+  const [dispatchAt, setDispatchAt] = useState<DispatchPoint | null>(null);
+  const [dispatchHazard, setDispatchHazard] = useState<HazardGroup | null>(null);
   const [crewsOpen, setCrewsOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
 
@@ -125,24 +122,17 @@ export function CommandCenter() {
     setFocus({ latitude: c.latitude, longitude: c.longitude, zoom: 8, key: Date.now() });
   }
 
-  async function runDispatch(latitude: number, longitude: number, hazard: HazardGroup) {
-    setDispatch((d) => ({ ...d, picking: false, loading: true, error: null, result: null }));
-    setDrawerOpen(true);
-    try {
-      const result = await dispatchRoute(latitude, longitude, hazard, 3);
-      setDispatch((d) => ({ ...d, loading: false, result, activeBase: result.bases[0]?.base_id ?? null }));
-    } catch (e) {
-      setDispatch((d) => ({ ...d, loading: false, error: errorText(e) }));
-    }
+  function onPick(latitude: number, longitude: number) {
+    pickArea({ latitude, longitude }, `${latitude.toFixed(3)}, ${longitude.toFixed(3)}`, { latitude, longitude });
   }
 
-  function onPick(latitude: number, longitude: number) {
-    if (dispatch.picking) {
-      setSelected({ latitude, longitude });
-      void runDispatch(latitude, longitude, dispatch.hazard);
-      return;
+  /** Open the Dispatch page, carrying the forecast point and its top hazard over. */
+  function openDispatch() {
+    if (selected) {
+      setDispatchAt({ ...selected, label: placeLabel ?? "Selected point" });
+      setDispatchHazard(null); // prefilled from the forecast's top hazard at that point
     }
-    pickArea({ latitude, longitude }, `${latitude.toFixed(3)}, ${longitude.toFixed(3)}`, { latitude, longitude });
+    setTab("dispatch");
   }
 
   function onFocusIncident(s: SimilarIncident) {
@@ -181,20 +171,12 @@ export function CommandCenter() {
                   bases={crewsQ.data?.bases ?? []}
                   selected={selected}
                   similar={similar}
-                  routes={dispatch.result?.bases ?? null}
-                  activeRouteId={dispatch.activeBase}
+                  routes={null}
+                  activeRouteId={null}
                   focus={focus}
-                  pickMode={dispatch.picking ? "dispatch" : "forecast"}
-                  hiddenHazards={hidden}
+                  pickMode="forecast"
+                  highlightHazard={highlight}
                   onPick={onPick}
-                  onToggleHazard={(g) =>
-                    setHidden((s) => {
-                      const next = new Set(s);
-                      if (next.has(g)) next.delete(g);
-                      else next.add(g);
-                      return next;
-                    })
-                  }
                 />
               </div>
               <aside className="flex min-w-0 flex-col gap-5 border-t border-border bg-panel p-4 xl:border-l xl:border-t-0">
@@ -206,6 +188,7 @@ export function CommandCenter() {
                   weekLabel={weekLabel}
                   onOperatorChange={setOperator}
                   onAbout={() => setAboutOpen(true)}
+                  onHoverHazard={setHighlight}
                 />
                 <EvidencePanel
                   incidents={readiness ? similar : null}
@@ -221,21 +204,7 @@ export function CommandCenter() {
               open={drawerOpen}
               onToggle={() => setDrawerOpen(!drawerOpen)}
               onEditCrews={() => setCrewsOpen(true)}
-              dispatch={dispatch}
-              onDispatchStart={() =>
-                setDispatch((d) => ({
-                  ...d,
-                  picking: true,
-                  error: null,
-                  hazard: forecast?.hazards[0]?.hazard_group ?? d.hazard,
-                }))
-              }
-              onDispatchCancel={() => setDispatch((d) => ({ ...d, picking: false }))}
-              onDispatchHazard={(h) => {
-                setDispatch((d) => ({ ...d, hazard: h }));
-                if (dispatch.result) void runDispatch(dispatch.result.incident.latitude, dispatch.result.incident.longitude, h);
-              }}
-              onDispatchSelectBase={(id) => setDispatch((d) => ({ ...d, activeBase: id }))}
+              onDispatch={openDispatch}
               agent={agentQ.data ?? null}
               briefing={briefing.data ?? (briefing.error ? { answer: errorText(briefing.error) ?? "", error: true } : null)}
               briefingLoading={briefing.isPending}
@@ -243,6 +212,18 @@ export function CommandCenter() {
               washout={washoutQ.data ?? null}
             />
           </>
+        )}
+        {tab === "dispatch" && (
+          <DispatchView
+            corridors={corridorsQ.data ?? []}
+            pipelines={pipelinesQ.data ?? null}
+            crews={crewsQ.data ?? null}
+            today={today}
+            at={dispatchAt}
+            onAt={setDispatchAt}
+            manualHazard={dispatchHazard}
+            onManualHazard={setDispatchHazard}
+          />
         )}
         {tab === "ranking" && (
           <div className="flex-1">

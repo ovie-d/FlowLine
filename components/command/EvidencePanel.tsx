@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { InfoTip } from "@/components/ui/InfoTip";
 import { hazardColor } from "@/lib/hazards";
 import type { SimilarIncident } from "@/lib/forecastTypes";
 import { PanelMessage } from "./ForecastPanel";
@@ -47,7 +48,7 @@ export function EvidencePanel({ incidents, referenceDate, loading, onFocus }: Pr
                 type="button"
                 onClick={() => onFocus(s)}
                 className="w-full rounded-md border border-border bg-panel-2/40 px-2 py-1.5 text-left hover:border-accent focus-visible:border-accent"
-                title="Show on map"
+                title="Fly to this incident on the map"
               >
                 <div className="flex items-center justify-between gap-2 text-[12px]">
                   <span className="flex min-w-0 items-center gap-1.5">
@@ -55,10 +56,10 @@ export function EvidencePanel({ incidents, referenceDate, loading, onFocus }: Pr
                       style={{ background: hazardColor(s.hazard_group) }} />
                     <span className="truncate text-fg">{s.hazard_label}</span>
                   </span>
-                  <span className="shrink-0 font-mono text-[11px] text-muted"
-                    title="Similarity score (0–1) from distance in place, season, weather and commodity — not a probability">
-                    similarity {s.similarity.toFixed(2)}
-                  </span>
+                  <InfoTip focusable={false} align="end"
+                    tip="Similarity score from 0 to 1, based on place, season, weather and commodity. 1 is identical. Not a probability.">
+                    <span className="shrink-0 font-mono text-[11px] text-muted">similarity {s.similarity.toFixed(2)}</span>
+                  </InfoTip>
                 </div>
                 <div className="text-[11px] text-muted">
                   {s.date} · {s.place} · {s.distance_km} km away

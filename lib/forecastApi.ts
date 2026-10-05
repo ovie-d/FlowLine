@@ -6,8 +6,10 @@ import type {
   BriefingResult,
   Corridor,
   CrewsPayload,
+  CrossingsLayer,
   DispatchResult,
   Forecast,
+  IncidentDetail,
   ModelInfo,
   Readiness,
   SimilarResult,
@@ -92,6 +94,9 @@ export const getCorridors = () => request<Corridor[]>("/corridors");
 export const getIncidentPoints = () =>
   request<GeoJSON.FeatureCollection<GeoJSON.Point>>("/map/incidents");
 export const getPipelines = () => request<GeoJSON.FeatureCollection>("/map/pipelines");
+export const getCrossings = () => request<CrossingsLayer>("/map/crossings");
+export const getIncidentDetail = (id: string) =>
+  request<IncidentDetail>(`/map/incidents/${encodeURIComponent(id)}`);
 
 export const getBriefing = (where: Where, start: string, operatorGroup?: string | null) =>
   request<BriefingResult>(

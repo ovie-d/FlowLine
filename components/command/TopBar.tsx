@@ -3,12 +3,15 @@
 import { useState } from "react";
 import { FlowlineLogo } from "@/components/brand/FlowlineMark";
 import type { Corridor } from "@/lib/forecastTypes";
+import { FetchBar } from "./FetchBar";
+import { ThemeToggle } from "./ThemeToggle";
 
-export type Tab = "forecast" | "ranking" | "decisions";
+export type Tab = "forecast" | "dispatch" | "ranking" | "decisions";
 export type Mode = "week" | "date";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "forecast", label: "Hazard Forecast" },
+  { key: "dispatch", label: "Emergency Dispatch" },
   { key: "ranking", label: "Risk Ranking" },
   { key: "decisions", label: "Decision Log" },
 ];
@@ -44,47 +47,52 @@ export function TopBar({ tab, onTab, corridors, onSearch, mode, onMode, date, on
   return (
     <header className="sticky top-0 z-30 flex min-h-14 shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-border bg-panel px-4 py-2 xl:h-14 xl:flex-nowrap xl:py-0">
       <FlowlineLogo size={26} />
-      <nav aria-label="Views" className="flex rounded-md border border-border p-0.5" role="tablist">
+      <nav aria-label="Views" className="flex flex-wrap rounded-md border border-border p-0.5" role="tablist">
         {TABS.map((t) => (
           <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} onClick={() => onTab(t.key)}
-            className={`rounded px-3 py-1 text-[13px] ${tab === t.key ? "bg-panel-2 font-semibold text-fg" : "text-muted hover:text-fg"}`}>
+            className={`flex items-center gap-1.5 rounded px-3 py-1 text-[13px] ${tab === t.key ? "bg-panel-2 font-semibold text-fg" : "text-muted hover:text-fg"}`}>
+            {t.key === "dispatch" && <span aria-hidden className="inline-block h-2 w-2 rounded-full bg-critical-strong" />}
             {t.label}
           </button>
         ))}
       </nav>
-      {tab === "forecast" && (
-        <div className="ml-auto flex flex-wrap items-center gap-3">
-          <form onSubmit={submit} className="relative" role="search">
-            <label htmlFor="area-search" className="sr-only">Search an area</label>
-            <input id="area-search" list="corridor-list" value={query}
-              onChange={(e) => { setQuery(e.target.value); setNotFound(false); }}
-              placeholder="Search area (e.g. Edson)"
-              aria-invalid={notFound}
-              className="w-44 rounded-md 2xl:w-52 border border-border bg-panel-2 px-2.5 py-1 text-[13px] text-fg placeholder:text-muted" />
-            <datalist id="corridor-list">
-              {corridors.map((c) => <option key={c.name} value={c.name} />)}
-            </datalist>
-            {notFound && <span role="status" className="absolute left-0 top-full mt-0.5 text-[11px] text-warn">No matching area</span>}
-          </form>
-          <div className="flex items-center rounded-md border border-border p-0.5" role="radiogroup" aria-label="Forecast window">
-            <button type="button" role="radio" aria-checked={mode === "week"} onClick={() => onMode("week")}
-              className={`rounded px-2.5 py-1 text-[12px] ${mode === "week" ? "bg-panel-2 font-semibold text-fg" : "text-muted"}`}>
-              Next 7 days
-            </button>
-            <button type="button" role="radio" aria-checked={mode === "date"} onClick={() => onMode("date")}
-              className={`rounded px-2.5 py-1 text-[12px] ${mode === "date" ? "bg-panel-2 font-semibold text-fg" : "text-muted"}`}>
-              Pick date
-            </button>
-          </div>
-          {mode === "date" && (
-            <label className="flex items-center gap-1 text-[12px] text-muted">
-              <span className="sr-only">Forecast date</span>
-              <input type="date" value={date} onChange={(e) => e.target.value && onDate(e.target.value)}
-                className="rounded border border-border bg-panel-2 px-1.5 py-0.5 text-fg [color-scheme:dark]" />
-            </label>
-          )}
-        </div>
-      )}
+      <div className="ml-auto flex flex-wrap items-center gap-3">
+        {tab === "forecast" && (
+          <>
+            <form onSubmit={submit} className="relative" role="search">
+              <label htmlFor="area-search" className="sr-only">Search an area</label>
+              <input id="area-search" list="corridor-list" value={query}
+                onChange={(e) => { setQuery(e.target.value); setNotFound(false); }}
+                placeholder="Search area (e.g. Edson)"
+                aria-invalid={notFound}
+                className="w-44 rounded-md 2xl:w-52 border border-border bg-panel-2 px-2.5 py-1 text-[13px] text-fg placeholder:text-muted" />
+              <datalist id="corridor-list">
+                {corridors.map((c) => <option key={c.name} value={c.name} />)}
+              </datalist>
+              {notFound && <span role="status" className="absolute left-0 top-full mt-0.5 text-[11px] text-warn">No matching area</span>}
+            </form>
+            <div className="flex items-center rounded-md border border-border p-0.5" role="radiogroup" aria-label="Forecast window">
+              <button type="button" role="radio" aria-checked={mode === "week"} onClick={() => onMode("week")}
+                className={`rounded px-2.5 py-1 text-[12px] ${mode === "week" ? "bg-panel-2 font-semibold text-fg" : "text-muted"}`}>
+                Next 7 days
+              </button>
+              <button type="button" role="radio" aria-checked={mode === "date"} onClick={() => onMode("date")}
+                className={`rounded px-2.5 py-1 text-[12px] ${mode === "date" ? "bg-panel-2 font-semibold text-fg" : "text-muted"}`}>
+                Pick date
+              </button>
+            </div>
+            {mode === "date" && (
+              <label className="flex items-center gap-1 text-[12px] text-muted">
+                <span className="sr-only">Forecast date</span>
+                <input type="date" value={date} onChange={(e) => e.target.value && onDate(e.target.value)}
+                  className="rounded border border-border bg-panel-2 px-1.5 py-0.5 text-fg" />
+              </label>
+            )}
+          </>
+        )}
+        <ThemeToggle />
+      </div>
+      <FetchBar />
     </header>
   );
 }

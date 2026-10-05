@@ -1,23 +1,11 @@
 "use client";
 
-import { HAZARD_ORDER, HAZARD_SHORT, hazardColor, type HazardGroup } from "@/lib/hazards";
-import type {
-  AgentStatus,
-  BriefingResult,
-  DispatchResult,
-  Readiness,
-  WashoutInsight,
-} from "@/lib/forecastTypes";
+import { hazardColor } from "@/lib/hazards";
+import type { AgentStatus, BriefingResult, Readiness, WashoutInsight } from "@/lib/forecastTypes";
+import { SampleChip } from "@/components/ui/Badges";
+import { InfoTip } from "@/components/ui/InfoTip";
+import { formatMinutes as minutes } from "@/lib/routeSim";
 import { PanelMessage } from "./ForecastPanel";
-
-type DispatchState = {
-  picking: boolean;
-  hazard: HazardGroup;
-  result: DispatchResult | null;
-  loading: boolean;
-  error: string | null;
-  activeBase: string | null;
-};
 
 type Props = {
   readiness: Readiness | null;
@@ -25,19 +13,13 @@ type Props = {
   open: boolean;
   onToggle: () => void;
   onEditCrews: () => void;
-  dispatch: DispatchState;
-  onDispatchStart: () => void;
-  onDispatchCancel: () => void;
-  onDispatchHazard: (h: HazardGroup) => void;
-  onDispatchSelectBase: (id: string) => void;
+  onDispatch: () => void;
   agent: AgentStatus | null;
   briefing: BriefingResult | null;
   briefingLoading: boolean;
   onBriefing: () => void;
   washout: WashoutInsight | null;
 };
-
-export type { DispatchState };
 
 function Card({ title, children, aside }: { title: string; children: React.ReactNode; aside?: React.ReactNode }) {
   return (
@@ -49,20 +31,6 @@ function Card({ title, children, aside }: { title: string; children: React.React
       <div>{children}</div>
     </section>
   );
-}
-
-function SampleChip() {
-  return (
-    <span className="rounded border border-warn/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warn">
-      Sample — to be validated
-    </span>
-  );
-}
-
-function minutes(m: number | null): string {
-  if (m == null) return "no drive time";
-  if (m < 60) return `${Math.round(m)} min`;
-  return `${Math.floor(m / 60)} h ${Math.round(m % 60)} min`;
 }
 
 export function ReadinessDrawer(p: Props) {
@@ -86,24 +54,17 @@ export function ReadinessDrawer(p: Props) {
             className="rounded border border-border px-2.5 py-1 text-[12px] text-fg hover:border-accent">
             Edit crew table
           </button>
-          {p.dispatch.picking ? (
-            <button type="button" onClick={p.onDispatchCancel}
-              className="rounded border border-accent px-2.5 py-1 text-[12px] font-semibold text-accent">
-              Cancel dispatch
-            </button>
-          ) : (
-            <button type="button" onClick={p.onDispatchStart}
-              className="rounded bg-critical px-2.5 py-1 text-[12px] font-semibold text-white hover:brightness-110">
-              Emergency dispatch
-            </button>
-          )}
+          <button type="button" onClick={p.onDispatch}
+            title="Open the Emergency Dispatch page for the selected point"
+            className="rounded bg-critical-strong px-2.5 py-1 text-[12px] font-semibold text-white hover:brightness-110">
+            Emergency dispatch →
+          </button>
         </div>
       </div>
       {p.open && (
-        <div className="grid grid-cols-1 items-start gap-3 px-4 pb-4 md:grid-cols-2 2xl:grid-cols-4">
+        <div className="grid grid-cols-1 items-start gap-3 px-4 pb-4 md:grid-cols-2 2xl:grid-cols-3">
           <CrewsCard readiness={p.readiness} loading={p.loading} />
           <WeatherCard readiness={p.readiness} loading={p.loading} washout={p.washout} />
-          <DispatchCard {...p} />
           <BriefingCard agent={p.agent} briefing={p.briefing} loading={p.briefingLoading}
             onBriefing={p.onBriefing} canBrief={!!p.readiness} />
         </div>
@@ -124,7 +85,10 @@ function CrewsCard({ readiness, loading }: { readiness: Readiness | null; loadin
             <li key={h.hazard_group}>
               <div className="flex items-center gap-1.5 font-semibold text-fg">
                 <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: hazardColor(h.hazard_group) }} />
-                {h.label} <span className="font-mono font-normal text-muted">{h.display}</span>
+                {h.label}{" "}
+                <InfoTip tip="Forecast probability of this hazard type if an incident happens here (same number as the forecast panel).">
+                  <span className="font-mono font-normal text-muted">{h.display}</span>
+                </InfoTip>
               </div>
               <ul className="ml-4 mt-0.5 grid gap-0.5 text-muted">
                 {h.crews.length === 0 && <li>No crew mapped — edit the crew table.</li>}
@@ -132,7 +96,10 @@ function CrewsCard({ readiness, loading }: { readiness: Readiness | null; loadin
                   <li key={c.crew_type_id}>
                     <span className="text-fg">{c.crew_name}</span>
                     {c.nearest_base ? (
-                      <> · {c.nearest_base.base_name}, {minutes(c.nearest_base.duration_min)}
+                      <> · {c.nearest_base.base_name},{" "}
+                        <InfoTip tip="Drive time from the nearest sample base holding this crew, from the road router (no traffic).">
+                          <span>{minutes(c.nearest_base.duration_min)}</span>
+                        </InfoTip>
                         {c.nearest_base.warning && " (straight-line distance only)"}</>
                     ) : " · no base holds this crew"}
                     <div className="text-[11px]">{c.equipment.join(", ")}</div>
@@ -153,7 +120,11 @@ function WeatherCard({ readiness, loading, washout }: {
 }) {
   const w = readiness?.weather;
   return (
-    <Card title="Weather context" aside={<span className="text-[10px] text-muted">not a model input</span>}>
+    <Card title="Weather context" aside={
+      <InfoTip tip="Adding weather made no measurable difference to the forecast on held-out data, so it was removed from the model. Shown here for planning context only." align="end">
+        <span className="text-[10px] text-muted">not a model input</span>
+      </InfoTip>
+    }>
       {loading && !readiness ? <div className="h-24 animate-pulse rounded bg-panel-2" /> : w ? (
         <div className="grid gap-1.5 text-[12px]">
           <div className="text-fg">
@@ -193,49 +164,6 @@ function WashoutCard({ insight }: { insight: WashoutInsight }) {
   );
 }
 
-function DispatchCard(p: Props) {
-  const d = p.dispatch;
-  return (
-    <Card title="Emergency dispatch" aside={<SampleChip />}>
-      <label className="mb-2 flex items-center gap-1.5 text-[12px] text-muted">
-        Hazard
-        <select value={d.hazard} onChange={(e) => p.onDispatchHazard(e.target.value as HazardGroup)}
-          className="min-w-0 flex-1 rounded border border-border bg-panel-2 px-1.5 py-0.5 text-fg">
-          {HAZARD_ORDER.map((g) => <option key={g} value={g}>{HAZARD_SHORT[g]}</option>)}
-        </select>
-      </label>
-      {d.error ? <PanelMessage tone="error" text={d.error} /> : d.loading ? (
-        <div className="grid gap-1.5" aria-busy>{[0, 1, 2].map((i) => <div key={i} className="h-10 animate-pulse rounded bg-panel-2" />)}</div>
-      ) : d.result ? (
-        <ol className="grid gap-1.5 text-[12px]">
-          {d.result.message && <PanelMessage text={d.result.message} />}
-          {d.result.bases.map((b, i) => (
-            <li key={b.base_id}>
-              <button type="button" onClick={() => p.onDispatchSelectBase(b.base_id)}
-                className={`w-full rounded-md border px-2 py-1 text-left ${d.activeBase === b.base_id ? "border-accent" : "border-border hover:border-muted"}`}>
-                <div className="flex justify-between gap-2">
-                  <span className="font-semibold text-fg">{i + 1}. {b.base_name}</span>
-                  <span className="font-mono text-fg">ETA {minutes(b.route.duration_min)}</span>
-                </div>
-                <div className="text-[11px] text-muted">
-                  {b.route.distance_km} km · {b.matching_crews.map((c) => c.crew_name).join(", ")} · via {b.route.provider}
-                  {b.route.last_mile && ` · +${b.route.last_mile.distance_km} km last-mile, off-road`}
-                </div>
-                {b.route.warning && <div className="text-[11px] text-warn">{b.route.warning}</div>}
-              </button>
-            </li>
-          ))}
-        </ol>
-      ) : (
-        <p className="text-[12px] text-muted">
-          {d.picking ? "Click the incident location on the map." :
-            "Press Emergency dispatch, then click the incident location to rank crew bases by drive time."}
-        </p>
-      )}
-    </Card>
-  );
-}
-
 function BriefingCard({ agent, briefing, loading, onBriefing, canBrief }: {
   agent: AgentStatus | null; briefing: BriefingResult | null; loading: boolean;
   onBriefing: () => void; canBrief: boolean;
@@ -244,7 +172,11 @@ function BriefingCard({ agent, briefing, loading, onBriefing, canBrief }: {
   const reason = !agent ? "Checking AI availability…" : !agent.available ? agent.reason ?? "AI unavailable"
     : !canBrief ? "Forecast an area first." : undefined;
   return (
-    <Card title="Readiness briefing" aside={agent?.available ? <span className="text-[10px] text-muted">{agent.model}</span> : null}>
+    <Card title="Readiness briefing" aside={agent?.available ? (
+      <InfoTip tip="AI model that writes the briefing from tool results. Every number it writes is checked against those results." align="end">
+        <span className="text-[10px] text-muted">{agent.model}</span>
+      </InfoTip>
+    ) : null}>
       {briefing && !briefing.error && (
         <p role="status" className={`mb-2 rounded border px-2 py-1 text-[11px] font-semibold ${briefing.numbers_verified ? "border-safe/50 text-safe" : "border-warn/60 text-warn"}`}>
           {briefing.numbers_verified
