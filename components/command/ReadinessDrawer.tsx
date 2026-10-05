@@ -245,6 +245,13 @@ function BriefingCard({ agent, briefing, loading, onBriefing, canBrief }: {
     : !canBrief ? "Forecast an area first." : undefined;
   return (
     <Card title="Readiness briefing" aside={agent?.available ? <span className="text-[10px] text-muted">{agent.model}</span> : null}>
+      {briefing && !briefing.error && (
+        <p role="status" className={`mb-2 rounded border px-2 py-1 text-[11px] font-semibold ${briefing.numbers_verified ? "border-safe/50 text-safe" : "border-warn/60 text-warn"}`}>
+          {briefing.numbers_verified
+            ? "✓ Every number matches a tool result."
+            : `⚠ Numbers not found in tool results: ${briefing.unsupported_numbers?.join(", ")}. Check before sharing.`}
+        </p>
+      )}
       <span title={reason} className="inline-block">
         <button type="button" disabled={disabled} onClick={onBriefing}
           aria-describedby={reason ? "brief-reason" : undefined}
@@ -256,14 +263,7 @@ function BriefingCard({ agent, briefing, loading, onBriefing, canBrief }: {
       {briefing && (
         <div className="mt-2 text-[12px]">
           {briefing.error ? <PanelMessage tone="error" text={briefing.reason ?? briefing.answer} /> : (
-            <>
-              <p className="whitespace-pre-line text-fg">{briefing.answer}</p>
-              <p className={`mt-1.5 text-[11px] ${briefing.numbers_verified ? "text-safe" : "text-warn"}`}>
-                {briefing.numbers_verified
-                  ? "✓ Every number matches a tool result."
-                  : `⚠ Numbers not found in tool results: ${briefing.unsupported_numbers?.join(", ")}. Check before sharing.`}
-              </p>
-            </>
+            <p className="whitespace-pre-line text-fg">{briefing.answer}</p>
           )}
         </div>
       )}
