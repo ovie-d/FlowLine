@@ -170,3 +170,7 @@ CREATE TABLE IF NOT EXISTS similarity_meta (
 -- Narrative embeddings (pilot): cosine HNSW index, empty until narratives are loaded.
 CREATE INDEX IF NOT EXISTS incident_embeddings_hnsw
   ON incident_embeddings USING hnsw (embedding vector_cosine_ops);
+
+-- Phase 6 additions (idempotent column adds).
+ALTER TABLE incidents ADD COLUMN IF NOT EXISTS closed_date date;
+ALTER TABLE incidents ADD COLUMN IF NOT EXISTS dist_pipeline_km double precision;

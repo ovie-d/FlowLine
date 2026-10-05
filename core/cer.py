@@ -55,6 +55,9 @@ def add_derived(df: pd.DataFrame) -> pd.DataFrame:
     out["event_date"] = (
         out["occurred"].fillna(out["discovered"]).fillna(out["reported"])
     )
+    out["closed"] = pd.to_datetime(
+        out["Closed Date"], format="%Y/%m/%d", errors="coerce"
+    )
     out["is_alberta"] = out["Province"].eq("Alberta")
     out["hazard_group"] = assign_hazard_groups(out)
     out["operator_group"] = out["Company"].map(operator_group)

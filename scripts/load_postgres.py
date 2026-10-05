@@ -108,6 +108,7 @@ def incident_rows(cer: pd.DataFrame) -> list[tuple]:
                 clean(r["Why it happened category"]),
                 clean(r["Detailed why it happened"]),
                 json.dumps(raw, default=str),
+                r["closed"].date() if pd.notna(r["closed"]) else None,
             )
         )
     return rows
@@ -118,7 +119,7 @@ INCIDENT_COLS = (
     "reported_date, province, is_alberta, nearest_centre, company, operator_group, "
     "commodity, status, latitude, longitude, geom, site_id, hazard_group, hazard_groups, "
     "is_model_target, incident_types, what_category, detailed_what, why_category, "
-    "detailed_why, raw"
+    "detailed_why, raw, closed_date"
 )
 INCIDENT_UPDATE = ", ".join(
     f"{c.strip()} = EXCLUDED.{c.strip()}"
@@ -130,10 +131,15 @@ INCIDENT_UPDATE = ", ".join(
 def load_incident_table(conn: psycopg.Connection) -> int:
     cer = load_cer()
     cer = cer[cer["event_date"].notna()]
-    placeholders = ", ".join(["%s"] * 15) + f", {POINT_SQL}, " + ", ".join(["%s"] * 10)
+    placeholders = (
+        ", ".join(["%s"] * 15)
+        + f", {POINT_SQL}, "
+        + ", ".join(["%s"] * 9)
+        + ", %s::jsonb, %s"
+    )
     conn.cursor().executemany(
         f"INSERT INTO incidents ({INCIDENT_COLS}, loaded_at) "
-        f"VALUES ({placeholders}::jsonb, now()) "
+        f"VALUES ({placeholders}, now()) "
         f"ON CONFLICT (incident_number) DO UPDATE SET {INCIDENT_UPDATE}, loaded_at = now()",
         incident_rows(cer),
     )
@@ -231,6 +237,20 @@ def load_pipelines(conn: psycopg.Connection) -> tuple[int, str]:
         rows,
     )
     return len(rows), str(path.relative_to(ROOT))
+
+
+def update_pipeline_distance(conn: psycopg.Connection) -> int:
+    """Distance (km) from each incident to the nearest CER pipeline system."""
+    conn.execute(
+        "UPDATE incidents i SET dist_pipeline_km = d.km FROM ("
+        " SELECT i2.incident_number, ("
+        "   SELECT ST_Distance(i2.geom, p.geom) / 1000.0 FROM pipelines p"
+        "   ORDER BY i2.geom <-> p.geom LIMIT 1) AS km"
+        " FROM incidents i2) d WHERE d.incident_number = i.incident_number"
+    )
+    return conn.execute(
+        "SELECT count(*) AS n FROM incidents WHERE dist_pipeline_km IS NOT NULL"
+    ).fetchone()["n"]
 
 
 def load_ranking(conn: psycopg.Connection) -> tuple[int, int]:
@@ -354,6 +374,7 @@ def main() -> None:
         print(f"incident_context: {n_ctx} vectors ({n_known} with full weather)")
         n_pipe, src = load_pipelines(conn)
         print(f"pipelines: {n_pipe} from {src}")
+        print(f"dist_pipeline_km: {update_pipeline_distance(conn)} incidents")
         conn.commit()
         n_seed, n_corr = load_ranking(conn)
         print(f"ranking_incidents: {n_seed} · corridors: {n_corr}")
