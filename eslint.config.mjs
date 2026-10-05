@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Python venv (bundled JS in site-packages), data and generated artefacts.
+    ".venv/**",
+    "data/**",
+    "osrm/**",
+    "logs/**",
   ]),
 ]);
 

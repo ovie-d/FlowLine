@@ -89,7 +89,7 @@ def main() -> int:
 
     if size > MAX_BYTES:
         print(
-            f"File exceeds 2 MB — re-running with maxAllowableOffset=0.01…"
+            "File exceeds 2 MB — re-running with maxAllowableOffset=0.01…"
         )
         offset_tol = 0.01
         collection = fetch_all(offset_tol)
