@@ -1,19 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Map, {
-  Layer,
-  NavigationControl,
-  Popup,
-  Source,
-  type MapMouseEvent,
-  type MapRef,
-} from "react-map-gl/mapbox";
+import * as mapboxLib from "react-map-gl/mapbox";
+import type { MapMouseEvent, MapRef } from "react-map-gl/mapbox";
 import type { Map as MapboxMap } from "mapbox-gl";
 import type { RankingRow } from "@/lib/types";
 import type { FeatureCollection, Position } from "geojson";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { useTheme } from "@/lib/theme";
+import { OPEN_TEXT_FONT, openStyle } from "@/lib/openBasemaps";
+import type { GLLib } from "@/components/command/HazardGLMap";
 
 const ALBERTA_BOUNDS: [[number, number], [number, number]] = [
   [-120, 49],
@@ -74,7 +70,10 @@ const AB_BORDER_GEOJSON: FeatureCollection = {
 };
 
 type Props = {
-  token: string;
+  /** Mapbox token; omitted for the keyless open basemap (MapLibre). */
+  token?: string;
+  /** react-map-gl components: Mapbox (default) or MapLibre (AlbertaMaplibre). */
+  lib?: GLLib;
   ranking: RankingRow[];
   selected: string | null;
   onSelect: (corridor: string) => void;
@@ -217,11 +216,14 @@ function featureHoverInfo(feature: {
 
 export default function AlbertaMapbox({
   token,
+  lib = mapboxLib,
   ranking,
   selected,
   onSelect,
   onFallback,
 }: Props) {
+  const { Map, Layer, NavigationControl, Popup, Source } = lib;
+  const open = !token;
   const mapRef = useRef<MapRef | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const fellBack = useRef(false);
@@ -287,7 +289,7 @@ export default function AlbertaMapbox({
 
   const onStyleReady = useCallback(
     (map: MapboxMap, remountOverlays: boolean) => {
-      if (styleKey === "light-plus") applyLightPlusTint(map);
+      if (styleKey === "light-plus" && !open) applyLightPlusTint(map);
       fitAlberta();
       setHover(null);
       setMapReady(true);
@@ -295,7 +297,7 @@ export default function AlbertaMapbox({
       // so corridor dots aren't wiped by a remount race.
       if (remountOverlays) setStyleEpoch((n) => n + 1);
     },
-    [styleKey, fitAlberta],
+    [styleKey, fitAlberta, open],
   );
 
   useEffect(() => {
@@ -435,7 +437,7 @@ export default function AlbertaMapbox({
       <Map
         ref={mapRef}
         mapboxAccessToken={token}
-        mapStyle={STYLE_URLS[styleKey]}
+        mapStyle={open ? openStyle(styleKey === "dark" ? "dark" : "light") : STYLE_URLS[styleKey]}
         initialViewState={{
           bounds: ALBERTA_BOUNDS,
           fitBoundsOptions: { padding: FIT_PADDING },
@@ -572,7 +574,7 @@ export default function AlbertaMapbox({
                     "symbol-sort-key": ["get", "sort_key"],
                     "text-field": ["to-string", ["get", "rank"]],
                     "text-size": 11,
-                    "text-font": ["DIN Pro Bold", "Arial Unicode MS Bold"],
+                    "text-font": open ? OPEN_TEXT_FONT : ["DIN Pro Bold", "Arial Unicode MS Bold"],
                     "text-allow-overlap": true,
                     "text-ignore-placement": true,
                   } as never
@@ -591,10 +593,9 @@ export default function AlbertaMapbox({
                     "symbol-sort-key": ["get", "sort_key"],
                     "text-field": ["get", "corridor"],
                     "text-size": 12,
-                    "text-font": [
-                      "DIN Pro Medium",
-                      "Arial Unicode MS Regular",
-                    ],
+                    "text-font": open
+                      ? OPEN_TEXT_FONT
+                      : ["DIN Pro Medium", "Arial Unicode MS Regular"],
                     "text-offset": [1.2, 0],
                     "text-anchor": "left",
                     "text-allow-overlap": true,

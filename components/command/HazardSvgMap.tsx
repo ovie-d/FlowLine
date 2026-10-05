@@ -211,7 +211,7 @@ export function HazardSvgMap({
         {offlineReason ?? "Mapbox basemap unavailable."}
         {onRetry && (
           <button type="button" onClick={onRetry} className="ml-2 rounded border border-border px-1.5 text-fg hover:border-accent">
-            Retry Mapbox
+            Retry interactive map
           </button>
         )}
       </div>

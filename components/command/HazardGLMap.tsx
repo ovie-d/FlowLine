@@ -1,22 +1,43 @@
 "use client";
 
-import "mapbox-gl/dist/mapbox-gl.css";
+/**
+ * The interactive hazard map, shared by both WebGL engines: Mapbox GL (with a token)
+ * and MapLibre GL on keyless open basemaps (without one). react-map-gl gives both the
+ * same component API; the engine-specific parts (style, terrain source, cluster API,
+ * snapshot option, error wording) come in through `engine`.
+ */
+
 import { useEffect, useMemo, useRef, useState } from "react";
-import Map, {
-  Layer,
-  Marker,
-  NavigationControl,
-  Popup,
-  ScaleControl,
-  Source,
-  type MapMouseEvent,
-  type MapRef,
-} from "react-map-gl/mapbox";
-import type { ExpressionSpecification, GeoJSONSource } from "mapbox-gl";
+import type * as MapboxLib from "react-map-gl/mapbox";
+import type { MapMouseEvent, MapProps, MapRef } from "react-map-gl/mapbox";
+import type { ExpressionSpecification } from "mapbox-gl";
 import { HAZARD_COLOR, HAZARD_SHORT, hazardHex, type HazardGroup } from "@/lib/hazards";
-import { STYLE_URL, isDarkBasemap, resolveStyle } from "@/lib/mapPrefs";
+import { isDarkBasemap, resolveStyle, type StyleKey } from "@/lib/mapPrefs";
 import { IncidentCard } from "./IncidentCard";
 import type { MapViewProps } from "./mapTypes";
+
+/** react-map-gl components (the Mapbox and MapLibre entry points share this shape). */
+export type GLLib = Pick<
+  typeof MapboxLib,
+  "Map" | "Layer" | "Source" | "Marker" | "Popup" | "NavigationControl" | "ScaleControl"
+>;
+
+export type GLEngine = {
+  /** Basemap style (URL or style object) for a resolved basemap key. */
+  style: (key: Exclude<StyleKey, "auto">) => MapProps["mapStyle"];
+  /** Extra Map props (e.g. the Mapbox token). */
+  mapProps: Partial<MapProps>;
+  /** Map props that keep the canvas readable for the printable snapshot. */
+  snapshotProps: Partial<MapProps>;
+  /** raster-dem source for 3D terrain. */
+  dem: Record<string, unknown>;
+  /** Zoom at which a cluster breaks apart (callback API in Mapbox, promise in MapLibre). */
+  clusterZoom: (source: unknown, clusterId: number) => Promise<number>;
+  /** Font for cluster counts, when the style's glyphs need a specific one. */
+  textFont?: string[];
+  timeoutMessage: string;
+  errorMessage: (err: (Error & { status?: number }) | undefined) => string;
+};
 
 const ALBERTA_VIEW = { longitude: -114.8, latitude: 54.6, zoom: 4.4 };
 const LOAD_TIMEOUT_MS = 25000;
@@ -44,8 +65,9 @@ const vis = (on: boolean) => (on ? "visible" : "none") as "visible" | "none";
 type Hover = { lon: number; lat: number; label: string; date: string; place: string };
 type Clicked = { lon: number; lat: number; id: string; anchor: "top" | "bottom" };
 
-export default function HazardMapbox({
-  token,
+export function HazardGLMap({
+  lib,
+  engine,
   incidents,
   pipelines,
   crossings,
@@ -64,7 +86,8 @@ export default function HazardMapbox({
   onPick,
   registerSnapshot,
   onFallback,
-}: MapViewProps & { token: string; onFallback: (reason: string) => void }) {
+}: MapViewProps & { lib: GLLib; engine: GLEngine; onFallback: (reason: string, noWebGL?: boolean) => void }) {
+  const { Map, Layer, Marker, NavigationControl, Popup, ScaleControl, Source } = lib;
   const mapRef = useRef<MapRef | null>(null);
   const [hover, setHover] = useState<Hover | null>(null);
   const [clicked, setClicked] = useState<Clicked | null>(null);
@@ -73,7 +96,7 @@ export default function HazardMapbox({
   const styleKey = resolveStyle(prefs.style, theme);
   const darkBase = isDarkBasemap(styleKey);
   const ink = overlayInk(darkBase);
-  const colors = useMemo(() => hazardMatch(darkBase ? "dark" : "light"), [darkBase]);
+  const colors = hazardMatch(darkBase ? "dark" : "light");
   const layers = prefs.layers;
 
   // Client-only component (dynamic, ssr: false): window and document exist here.
@@ -89,14 +112,14 @@ export default function HazardMapbox({
   // Fall back only on real failures, and say which one.
   useEffect(() => {
     if (!webgl) {
-      onFallback("WebGL is unavailable in this browser (turn on hardware acceleration; see chrome://gpu).");
+      onFallback("WebGL is unavailable in this browser (turn on hardware acceleration; see chrome://gpu).", true);
       return;
     }
     const t = window.setTimeout(() => {
-      if (!loaded.current) onFallback(`The Mapbox basemap did not load within ${LOAD_TIMEOUT_MS / 1000} s (network or firewall?).`);
+      if (!loaded.current) onFallback(engine.timeoutMessage);
     }, LOAD_TIMEOUT_MS);
     return () => window.clearTimeout(t);
-  }, [webgl, onFallback]);
+  }, [webgl, onFallback, engine]);
 
   const [ready, setReady] = useState(false);
   useEffect(() => {
@@ -120,17 +143,17 @@ export default function HazardMapbox({
     });
   }, [focus, ready]);
 
-  // 3D terrain (Mapbox DEM), re-applied after every basemap change; the camera tilts
+  // 3D terrain (the engine's DEM), re-applied after every basemap change; the camera tilts
   // when it is on and levels again when it is off.
   useEffect(() => {
     const map = mapRef.current?.getMap();
     if (!map || !ready) return;
     const apply = () => {
       if (prefs.terrain) {
-        if (!map.getSource("mapbox-dem")) {
-          map.addSource("mapbox-dem", { type: "raster-dem", url: "mapbox://mapbox.mapbox-terrain-dem-v1", tileSize: 512, maxzoom: 14 });
+        if (!map.getSource("terrain-dem")) {
+          map.addSource("terrain-dem", engine.dem as Parameters<typeof map.addSource>[1]);
         }
-        map.setTerrain({ source: "mapbox-dem", exaggeration: 1.4 });
+        map.setTerrain({ source: "terrain-dem", exaggeration: 1.4 });
       } else {
         map.setTerrain(null);
       }
@@ -140,7 +163,7 @@ export default function HazardMapbox({
     return () => {
       map.off("style.load", apply);
     };
-  }, [prefs.terrain, ready]);
+  }, [prefs.terrain, ready, engine]);
   useEffect(() => {
     const map = mapRef.current;
     const pitch = prefs.terrain ? 55 : 0;
@@ -206,11 +229,14 @@ export default function HazardMapbox({
     const f = e.features?.[0];
     if (f && f.layer?.id === "clusters") {
       const clusterId = f.properties?.cluster_id as number;
-      const src = mapRef.current?.getSource("incident-clusters") as GeoJSONSource | undefined;
+      const src = mapRef.current?.getSource("incident-clusters");
       const [lon, lat] = (f.geometry as GeoJSON.Point).coordinates;
-      src?.getClusterExpansionZoom(clusterId, (err, zoom) => {
-        if (!err && zoom != null) mapRef.current?.easeTo({ center: [lon, lat], zoom: zoom + 0.3, duration: 700 });
-      });
+      if (src) {
+        engine
+          .clusterZoom(src, clusterId)
+          .then((zoom) => mapRef.current?.easeTo({ center: [lon, lat], zoom: zoom + 0.3, duration: 700 }))
+          .catch(() => undefined);
+      }
       return;
     }
     if (f && f.layer?.id === "incidents" && f.geometry.type === "Point") {
@@ -247,13 +273,13 @@ export default function HazardMapbox({
   return (
     <Map
       ref={mapRef}
-      mapboxAccessToken={token}
-      mapStyle={STYLE_URL[styleKey]}
+      {...engine.mapProps}
+      {...(registerSnapshot ? engine.snapshotProps : {})}
+      mapStyle={engine.style(styleKey)}
       projection={prefs.globe ? "globe" : "mercator"}
       initialViewState={ALBERTA_VIEW}
       minZoom={1.5}
       maxPitch={70}
-      preserveDrawingBuffer={!!registerSnapshot}
       style={{ width: "100%", height: "100%" }}
       cursor={pickMode === "dispatch" ? "crosshair" : "pointer"}
       interactiveLayerIds={interactive}
@@ -266,12 +292,7 @@ export default function HazardMapbox({
       }}
       onError={(e) => {
         if (loaded.current) return;
-        const err = e.error as (Error & { status?: number }) | undefined;
-        onFallback(
-          err?.status
-            ? `Mapbox refused the request (HTTP ${err.status}): check the token and its URL restrictions.`
-            : `Mapbox failed to load: ${err?.message ?? "unknown error"}.`,
-        );
+        onFallback(engine.errorMessage(e.error as (Error & { status?: number }) | undefined));
       }}
       attributionControl
     >
@@ -347,6 +368,7 @@ export default function HazardMapbox({
           layout={{
             visibility: vis(layers.incidents),
             "text-field": ["get", "point_count_abbreviated"],
+            ...(engine.textFont ? { "text-font": engine.textFont } : {}),
             "text-size": 11,
             "text-allow-overlap": true,
           }}

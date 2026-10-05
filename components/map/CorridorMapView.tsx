@@ -5,14 +5,13 @@ import { useCallback, useState } from "react";
 import type { RankingRow } from "@/lib/types";
 import { SvgCorridorMap } from "./SvgCorridorMap";
 
-const AlbertaMapbox = dynamic(() => import("./AlbertaMapbox"), {
-  ssr: false,
-  loading: () => (
-    <div className="flex h-full min-h-0 items-center justify-center rounded-lg bg-panel-2 text-[12px] text-muted">
-      Loading map…
-    </div>
-  ),
-});
+const loading = () => (
+  <div className="flex h-full min-h-0 items-center justify-center rounded-lg bg-panel-2 text-[12px] text-muted">
+    Loading map…
+  </div>
+);
+const AlbertaMapbox = dynamic(() => import("./AlbertaMapbox"), { ssr: false, loading });
+const AlbertaMaplibre = dynamic(() => import("./AlbertaMaplibre"), { ssr: false, loading });
 
 type Props = {
   ranking: RankingRow[];
@@ -70,20 +69,21 @@ function LegendLine({ label }: { label: string }) {
 }
 
 /**
- * Map tab content: Mapbox when a public token is present, SVG offline fallback otherwise.
+ * Map tab content: Mapbox with a public token, the keyless open basemap (MapLibre)
+ * without one or if Mapbox fails, and the SVG map as the last fallback (no WebGL).
  */
 export function CorridorMapView({ ranking, selected, onSelect }: Props) {
   const token = (process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "").trim();
-  const [useMapbox, setUseMapbox] = useState(() => token.length > 0);
+  const [engine, setEngine] = useState<"mapbox" | "open" | "svg">(() => (token ? "mapbox" : "open"));
 
   const onFallback = useCallback(() => {
-    setUseMapbox(false);
+    setEngine((e) => (e === "mapbox" ? "open" : "svg"));
   }, []);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1" style={{ minHeight: 0 }}>
-        {useMapbox && token ? (
+        {engine === "mapbox" ? (
           <AlbertaMapbox
             token={token}
             ranking={ranking}
@@ -91,6 +91,8 @@ export function CorridorMapView({ ranking, selected, onSelect }: Props) {
             onSelect={onSelect}
             onFallback={onFallback}
           />
+        ) : engine === "open" ? (
+          <AlbertaMaplibre ranking={ranking} selected={selected} onSelect={onSelect} onFallback={onFallback} />
         ) : (
           <SvgCorridorMap
             ranking={ranking}

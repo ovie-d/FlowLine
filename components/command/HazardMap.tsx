@@ -12,31 +12,33 @@ import { MapControls } from "./MapControls";
 import type { MapInputs } from "./mapTypes";
 import { YearSlider } from "./YearSlider";
 
-const HazardMapbox = dynamic(() => import("./HazardMapbox"), {
-  ssr: false,
-  loading: () => <div className="h-full w-full animate-pulse bg-panel" aria-label="Loading map" />,
-});
+const loading = () => <div className="h-full w-full animate-pulse bg-panel" aria-label="Loading map" />;
+const HazardMapbox = dynamic(() => import("./HazardMapbox"), { ssr: false, loading });
+const HazardMaplibre = dynamic(() => import("./HazardMaplibre"), { ssr: false, loading });
 
-const NO_TOKEN_REASON =
-  "No Mapbox token in this build: set NEXT_PUBLIC_MAPBOX_TOKEN in .env.local and restart (start.sh rebuilds).";
-
-type MapMode = { mode: "mapbox" | "offline"; reason: string | null; attempt: number };
+/**
+ * mapbox: Mapbox GL with NEXT_PUBLIC_MAPBOX_TOKEN.
+ * open: MapLibre GL on keyless open basemaps (no token, or Mapbox failed).
+ * offline: SVG Alberta map (no WebGL, or the open basemap failed too).
+ */
+type Engine = "mapbox" | "open" | "offline";
+type MapMode = { mode: Engine; reason: string | null; attempt: number };
 
 function yearOf(f: GeoJSON.Feature): number {
   return Number(f.properties?.year ?? String(f.properties?.date ?? "").slice(0, 4));
 }
 
 /**
- * Mapbox basemap when a token is set; SVG offline view (with the real reason)
- * otherwise. Owns the display-only filters: hazard legend, year range, layers.
+ * Interactive WebGL map (Mapbox with a token, open basemaps without), falling back to
+ * the SVG Alberta map with the real reason. Owns the display-only filters: hazard
+ * legend, year range, layers.
  */
 export function HazardMap({ banner, ...props }: MapInputs & { banner?: React.ReactNode }) {
   const token = (process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "").trim();
   const theme = useTheme();
   const prefs = useMapPrefs();
-  const [state, setState] = useState<MapMode>(() =>
-    token ? { mode: "mapbox", reason: null, attempt: 0 } : { mode: "offline", reason: NO_TOKEN_REASON, attempt: 0 },
-  );
+  const first: Engine = token ? "mapbox" : "open";
+  const [state, setState] = useState<MapMode>({ mode: first, reason: null, attempt: 0 });
   const [hidden, setHidden] = useState<Set<HazardGroup>>(new Set());
   const [years, setYears] = useState<[number, number] | null>(null);
 
@@ -47,11 +49,16 @@ export function HazardMap({ banner, ...props }: MapInputs & { banner?: React.Rea
     enabled: prefs.layers.crossings,
   });
 
-  const onFallback = useCallback((reason: string) => {
-    console.warn(`[Flowline] Mapbox unavailable, using the offline map: ${reason}`);
-    setState((s) => ({ ...s, mode: "offline", reason }));
+  // Mapbox failing (bad token, blocked) drops to the open basemaps; no WebGL or the open
+  // basemaps failing too drops to the SVG map. Each step says why.
+  const onFallback = useCallback((reason: string, noWebGL?: boolean) => {
+    setState((s) => {
+      const mode: Engine = s.mode === "mapbox" && !noWebGL ? "open" : "offline";
+      console.warn(`[Flowline] ${s.mode === "mapbox" ? "Mapbox" : "Open basemap"} unavailable, using the ${mode === "open" ? "open basemap" : "offline"} map: ${reason}`);
+      return { ...s, mode, reason };
+    });
   }, []);
-  const retry = useCallback(() => setState((s) => ({ mode: "mapbox", reason: null, attempt: s.attempt + 1 })), []);
+  const retry = useCallback(() => setState((s) => ({ mode: first, reason: null, attempt: s.attempt + 1 })), [first]);
 
   const bounds = useMemo<[number, number] | null>(() => {
     const ys = (props.incidents?.features ?? []).map(yearOf).filter(Number.isFinite);
@@ -102,11 +109,22 @@ export function HazardMap({ banner, ...props }: MapInputs & { banner?: React.Rea
     <div className="relative h-full w-full overflow-hidden">
       {state.mode === "mapbox" ? (
         <HazardMapbox key={state.attempt} token={token} onFallback={onFallback} {...view} />
+      ) : state.mode === "open" ? (
+        <HazardMaplibre key={`open-${state.attempt}`} onFallback={onFallback} {...view} />
       ) : (
-        <HazardSvgMap {...view} offlineReason={state.reason} onRetry={token ? retry : undefined} />
+        <HazardSvgMap {...view} offlineReason={state.reason} onRetry={retry} />
+      )}
+      {state.mode === "open" && state.reason && (
+        <div role="status" className="absolute bottom-2 left-2 max-w-[45%] rounded bg-panel/90 px-2 py-1 text-[11px] text-muted">
+          <span className="font-semibold text-fg">Open basemap.</span> {state.reason}
+          <button type="button" onClick={retry} className="ml-2 rounded border border-border px-1.5 text-fg hover:border-accent">
+            Retry Mapbox
+          </button>
+        </div>
       )}
       <div className={`absolute top-2 ${offline ? "left-2" : "left-12"}`}>
-        <MapControls prefs={prefs} offline={offline} crossingsNote={crossingsNote} incidentLayers={incidentLayers} />
+        <MapControls prefs={prefs} offline={offline} crossingsNote={crossingsNote} incidentLayers={incidentLayers}
+          openBasemap={state.mode === "open"} />
       </div>
       <MapLegend hidden={hidden} onToggle={toggle} darkBase={darkBase} prefs={prefs} incidentLayers={incidentLayers}
         routes={!!props.routes?.length} clusters={!offline} />
@@ -118,7 +136,7 @@ export function HazardMap({ banner, ...props }: MapInputs & { banner?: React.Rea
       )}
       {banner}
       {incidentLayers && bounds && range && prefs.layers.incidents && (
-        <div className={`absolute left-1/2 w-[min(560px,calc(100%-1rem))] -translate-x-1/2 ${offline ? "bottom-12" : "bottom-9"}`}>
+        <div className={`absolute left-1/2 w-[min(560px,calc(100%-1rem))] -translate-x-1/2 ${offline || state.reason ? "bottom-12" : "bottom-9"}`}>
           <YearSlider min={bounds[0]} max={bounds[1]} value={range} onChange={setYears} shown={shown} />
         </div>
       )}

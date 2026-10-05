@@ -28,10 +28,12 @@ type Props = {
   crossingsNote: string | null;
   /** False on the Dispatch page, which shows no incident layers. */
   incidentLayers?: boolean;
+  /** Keyless open basemaps (MapLibre) instead of Mapbox. */
+  openBasemap?: boolean;
 };
 
 /** Basemap style, 3D terrain, globe and layer toggles (per browser, display only). */
-export function MapControls({ prefs, offline, crossingsNote, incidentLayers = true }: Props) {
+export function MapControls({ prefs, offline, crossingsNote, incidentLayers = true, openBasemap = false }: Props) {
   const [open, setOpen] = useState(false);
   const toggleLayer = (k: LayerKey) =>
     setMapPrefs((p) => ({ ...p, layers: { ...p.layers, [k]: !p.layers[k] } }));
@@ -85,7 +87,12 @@ export function MapControls({ prefs, offline, crossingsNote, incidentLayers = tr
                 tip="Shows the Earth as a globe at low zoom; flat map when zoomed in."
               />
             </div>
-            {offline && <p className="mt-1 text-[11px] text-muted">Basemap options need the Mapbox map.</p>}
+            {offline && <p className="mt-1 text-[11px] text-muted">Basemap options need WebGL (interactive map).</p>}
+            {openBasemap && (
+              <p className="mt-1 text-[11px] text-muted">
+                Open basemaps (OpenFreeMap, Esri imagery): no Mapbox token needed. Add one in .env.local for Mapbox styles.
+              </p>
+            )}
           </fieldset>
           <fieldset>
             <legend className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted">Layers</legend>

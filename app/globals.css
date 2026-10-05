@@ -343,3 +343,34 @@ a:focus-visible {
     margin: 12mm;
   }
 }
+
+/* MapLibre (open basemaps) uses maplibregl- class names for the same popups. */
+.fl-popup .maplibregl-popup-content {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+.fl-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip {
+  border-top-color: var(--panel);
+}
+.fl-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip {
+  border-bottom-color: var(--panel);
+}
+.fl-popup.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: var(--panel);
+}
+.fl-popup.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: var(--panel);
+}
+.fl-popup .maplibregl-popup-close-button {
+  color: var(--muted);
+  font-size: 16px;
+  padding: 0 6px;
+}
+.fl-popup .maplibregl-popup-close-button:hover {
+  color: var(--text);
+  background: transparent;
+}
