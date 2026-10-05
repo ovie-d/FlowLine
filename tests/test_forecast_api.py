@@ -248,6 +248,12 @@ def test_open_meteo_summary() -> None:
     assert s["outlook"]["precip_total_mm"] == 7.0
 
 
+def test_open_meteo_outside_window_is_unavailable_not_zero() -> None:
+    today = date(2026, 1, 10)
+    with pytest.raises(openmeteo.WeatherUnavailable):
+        openmeteo.summarize(fake_days(today), today + timedelta(days=3))
+
+
 def test_readiness_with_weather(
     api: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -324,3 +330,17 @@ def test_washout_insight_is_computed_and_labelled(api: TestClient, pg_env: str) 
     assert body["after"]["n_geotechnical_with_precip"] == 2
     assert body["is_forecast"] is False and "not a model forecast" in body["note"]
     assert "25.0% to 66.7%" in body["headline"]
+
+
+def test_map_layers(api: TestClient) -> None:
+    corridors = api.get("/corridors").json()
+    assert corridors == [
+        {"name": "Edson", "n_incidents": 5, "latitude": EDSON[0], "longitude": EDSON[1]}
+    ]
+    points = api.get("/map/incidents").json()
+    assert points["type"] == "FeatureCollection" and len(points["features"]) == 5
+    props = points["features"][0]["properties"]
+    assert set(props) == {"id", "date", "hazard_group", "hazard_label", "place"}
+    lines = api.get("/map/pipelines").json()
+    assert lines["features"][0]["properties"]["name"] == "Trans Mountain Pipeline"
+    assert lines["features"][0]["geometry"]["type"] in {"LineString", "MultiLineString"}

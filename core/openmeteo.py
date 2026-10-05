@@ -87,6 +87,10 @@ def summarize(days: list[dict[str, Any]], today: date) -> dict[str, Any]:
     iso = today.isoformat()
     past = [d for d in days if d["date"] < iso]
     ahead = [d for d in days if d["date"] >= iso][:FORECAST_DAYS]
+    if len(ahead) < FORECAST_DAYS or len(past) < PAST_DAYS:
+        # Open-Meteo's window is anchored on the real today: other weeks are not covered,
+        # and partial windows would turn missing days into false zeros.
+        raise WeatherUnavailable("weather outlook only covers the coming 7 days")
     last7 = past[-7:]
     freeze_thaw = sum(
         1

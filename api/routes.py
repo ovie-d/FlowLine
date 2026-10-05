@@ -23,6 +23,7 @@ from api.schemas import (
     ForecastRequest,
 )
 from api.sessions import get_history, reset_session, set_history
+from core import mapdata
 from core.agent import llm
 from core.agent.budget import usage_summary
 from core.agent.loop import MAX_TOOL_STEPS, UNAVAILABLE, run_agent, run_briefing
@@ -441,3 +442,24 @@ def briefing(body: BriefingRequest) -> dict[str, Any]:
         for c in result.get("tool_calls", [])
     ]
     return result
+
+
+@router.get("/corridors")
+def corridors_route() -> list[dict[str, Any]]:
+    """Ranking corridors with centroids (area search)."""
+    with _db_or_503() as conn:
+        return mapdata.corridors(conn)
+
+
+@router.get("/map/incidents")
+def map_incidents() -> dict[str, Any]:
+    """All incidents as GeoJSON points, coloured by hazard group."""
+    with _db_or_503() as conn:
+        return mapdata.incident_points(conn)
+
+
+@router.get("/map/pipelines")
+def map_pipelines() -> dict[str, Any]:
+    """CER pipeline systems (simplified) as GeoJSON, display only."""
+    with _db_or_503() as conn:
+        return mapdata.pipelines(conn)
