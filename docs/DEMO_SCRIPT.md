@@ -66,10 +66,18 @@ Open the **Readiness & dispatch** drawer.
 > **Edit crew table**.)
 
 ## 3:00 — Emergency dispatch (35 s)
-Click **Emergency dispatch**, then a point west of Edson near Hinton.
+Click **Emergency dispatch →** in the drawer. The Dispatch page opens with Edson pinned and
+the hazard prefilled from the forecast's top hazard. Click a point west of Edson near Hinton
+to move the pin.
 > "Ranked by real drive time on local OpenStreetMap routing — Edson first, about an hour,
-> route drawn. If the site is off-road we show the last mile separately; with no router
-> we fall back to straight-line distance and say so."
+> every route drawn, the selected one highlighted. If the site is off-road we show the last
+> mile separately; with no router we fall back to straight-line distance and say so."
+
+Press **Start simulation**, then **Notify crew (simulated)**.
+> "This timeline is labelled SIMULATION: only the drive time comes from the router;
+> notification and mobilisation times aren't modelled. The checklist comes from the crew
+> table — sample until the operator validates it." (Optional: **Print / save one-page
+> summary**.)
 
 ## 3:35 — Readiness briefing (30 s)
 Click **Generate briefing**.

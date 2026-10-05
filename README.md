@@ -100,7 +100,13 @@ Frontend — `.env.local`:
 |---|---|
 | `NEXT_PUBLIC_API_URL` | default `http://127.0.0.1:8000` |
 | `NEXT_PUBLIC_MAPBOX_TOKEN` | Mapbox `pk.…` token (URL-restricted). Empty = offline Alberta map |
-| `NEXT_PUBLIC_MAP_STYLE` | `dark` (default), `light-plus`, `outdoors`, `streets` |
+| `NEXT_PUBLIC_MAP_STYLE` | Risk Ranking map only: `dark` (default), `light-plus`, `outdoors`, `streets` |
+
+The forecast and dispatch maps have their own **Map & layers** panel: basemap (Auto follows
+the dark/light theme; Dark, Light, Streets, Satellite), 3D terrain, globe when zoomed out,
+and layers (incidents, heatmap, pipelines, crew bases, river crossings). The river-crossings
+layer appears after `python -m scripts.washout_crossings` has built it (needs the OSM
+extract); until then the panel says so. Theme and map choices are remembered per browser.
 
 ---
 
@@ -147,6 +153,8 @@ PostgreSQL 18 + PostGIS + pgvector (docker)   OSRM (docker, Alberta car profile)
 | `GET` | `/readiness` | 7-day readiness: forecast, recommended crews + nearest base, weather, similar |
 | `GET` / `PUT` | `/crews`, `/crews/map` | Crew & equipment table (sample until edited) |
 | `POST` | `/dispatch/route` | Crew bases ranked by drive time, with route geometry |
+| `GET` | `/map/incidents`, `/map/incidents/{id}` | Incident points; one incident with plain-English CER cause codes |
+| `GET` | `/map/pipelines`, `/map/crossings` | Pipeline systems; pipeline–waterway crossings (display only) |
 | `POST` | `/briefing` | AI readiness briefing (numbers verified) |
 | `GET` | `/model/info`, `/insights/washout` | Held-out performance; observed washout pattern |
 | `GET` | `/agent/status`, `/agent/usage` | AI availability; token usage and spend |
