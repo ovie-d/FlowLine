@@ -2,7 +2,7 @@
 
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { DecisionLog } from "@/components/DecisionLog";
 import { getDecisions } from "@/lib/api";
 import {
@@ -36,6 +36,23 @@ const RankingView = dynamic(() => import("@/components/ranking/RankingView"), {
 });
 
 const WEEK_HALF = 3;
+// Below this viewport height (e.g. a 13" laptop at 1280×800) the map gets priority
+// and the readiness drawer starts collapsed.
+const TALL_QUERY = "(min-height: 900px)";
+
+function subscribeTall(onChange: () => void): () => void {
+  const mq = window.matchMedia(TALL_QUERY);
+  mq.addEventListener("change", onChange);
+  return () => mq.removeEventListener("change", onChange);
+}
+
+function useTallScreen(): boolean {
+  return useSyncExternalStore(
+    subscribeTall,
+    () => window.matchMedia(TALL_QUERY).matches,
+    () => false,
+  );
+}
 
 /** Today's calendar date in Alberta as YYYY-MM-DD. */
 function albertaToday(): string {
@@ -72,7 +89,10 @@ export function CommandCenter() {
   const [operator, setOperator] = useState<string | null>(null);
   const [focus, setFocus] = useState<MapFocus | null>(null);
   const [hidden, setHidden] = useState<Set<HazardGroup>>(new Set());
-  const [drawerOpen, setDrawerOpen] = useState(true);
+  const tall = useTallScreen();
+  const [drawerPref, setDrawerPref] = useState<boolean | null>(null);
+  const drawerOpen = drawerPref ?? tall;
+  const setDrawerOpen = (open: boolean) => setDrawerPref(open);
   const [dispatch, setDispatch] = useState<DispatchState>(INITIAL_DISPATCH);
   const [crewsOpen, setCrewsOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -218,7 +238,7 @@ export function CommandCenter() {
               readiness={readiness}
               loading={readinessQ.isFetching}
               open={drawerOpen}
-              onToggle={() => setDrawerOpen((v) => !v)}
+              onToggle={() => setDrawerOpen(!drawerOpen)}
               onEditCrews={() => setCrewsOpen(true)}
               dispatch={dispatch}
               onDispatchStart={() =>

@@ -259,7 +259,8 @@ export default function RankingView() {
         height: "100%",
         display: "flex",
         flexDirection: "column",
-        overflow: "hidden",
+        // Short screens (e.g. 1280×800) scroll instead of squeezing the map.
+        overflowY: "auto",
         padding: "16px 24px 32px",
         boxSizing: "border-box",
       }}
@@ -291,7 +292,7 @@ export default function RankingView() {
             gridTemplateColumns: "minmax(0, 1fr) 380px",
             gap: 16,
             alignItems: "stretch",
-            minHeight: 0,
+            minHeight: 760,
             overflow: "hidden",
           }}
         >
@@ -320,7 +321,7 @@ export default function RankingView() {
               className="flex min-h-0"
               style={{
                 flex: "1 1 auto",
-                minHeight: 0,
+                minHeight: 460,
                 gap: 16,
                 alignItems: "stretch",
                 overflow: "hidden",
