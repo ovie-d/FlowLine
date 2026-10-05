@@ -43,14 +43,7 @@ export function RankedList({
   return (
     <section
       className="flex min-h-0 min-w-0 flex-col rounded-xl border border-border bg-panel"
-      style={{
-        flex: "1 1 auto",
-        minHeight: 0,
-        height: "100%",
-        padding: 16,
-        boxSizing: "border-box",
-        overflow: "hidden",
-      }}
+      style={{ padding: 16, boxSizing: "border-box" }}
     >
       {/* Card header — fixed */}
       <div
@@ -100,11 +93,8 @@ export function RankedList({
           <span>Agent draft</span>
         </div>
 
-        {/* Rows — scroll */}
-        <div
-          className="min-h-0"
-          style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}
-        >
+        {/* Rows */}
+        <div>
           <div className="flex min-w-[600px] flex-col">
             {visible.map((row) => (
               <RankRow

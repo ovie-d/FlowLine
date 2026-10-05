@@ -256,11 +256,8 @@ export default function RankingView() {
     <div
       className="bg-bg text-fg antialiased"
       style={{
-        height: "100%",
         display: "flex",
         flexDirection: "column",
-        // Short screens (e.g. 1280×800) scroll instead of squeezing the map.
-        overflowY: "auto",
         padding: "16px 24px 32px",
         boxSizing: "border-box",
       }}
@@ -285,20 +282,10 @@ export default function RankingView() {
           </div>
         )}
 
-        <div
-          className="grid min-h-0"
-          style={{
-            flex: "1 1 auto",
-            gridTemplateColumns: "minmax(0, 1fr) 380px",
-            gap: 16,
-            alignItems: "stretch",
-            minHeight: 760,
-            overflow: "hidden",
-          }}
-        >
+        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
           <main
-            className="flex min-h-0 min-w-0 flex-col"
-            style={{ gap: 14, minHeight: 0, overflow: "hidden" }}
+            className="flex min-w-0 flex-col"
+            style={{ gap: 14 }}
           >
             <div style={{ flex: "0 0 auto" }}>
               <PolicyBar high={high} onChange={setHigh} />
@@ -317,16 +304,7 @@ export default function RankingView() {
               />
             </div>
 
-            <section
-              className="flex min-h-0"
-              style={{
-                flex: "1 1 auto",
-                minHeight: 460,
-                gap: 16,
-                alignItems: "stretch",
-                overflow: "hidden",
-              }}
-            >
+            <section className="grid min-w-0 gap-4 2xl:grid-cols-[320px_minmax(0,1fr)]">
               <MapDetailsCard
                 tab={tab}
                 onTabChange={setTab}

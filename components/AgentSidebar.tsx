@@ -60,15 +60,7 @@ export function AgentSidebar({
     <aside
       aria-label="Agent"
       className="flex min-h-0 flex-col gap-2.5 rounded-xl border border-border bg-panel"
-      style={{
-        height: "100%",
-        minHeight: 0,
-        maxHeight: "100%",
-        padding: 16,
-        boxSizing: "border-box",
-        width: "100%",
-        overflow: "hidden",
-      }}
+      style={{ padding: 16, boxSizing: "border-box", width: "100%" }}
     >
       {/* Title — fixed top */}
       <div
@@ -81,10 +73,10 @@ export function AgentSidebar({
         </div>
       </div>
 
-      {/* Thread (+ escalate drafts) — only this scrolls */}
+      {/* Thread (+ escalate drafts) */}
       <div
         className="flex min-h-0 flex-col gap-2.5"
-        style={{ flex: 1, minHeight: 0, overflowY: "auto" }}
+        style={{ flex: "0 0 auto" }}
         ref={threadRef}
       >
         <ChatThread

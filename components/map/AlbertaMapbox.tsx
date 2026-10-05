@@ -397,7 +397,7 @@ export default function AlbertaMapbox({
         <button
           type="button"
           onClick={fitAlberta}
-          className="rounded border border-[#24365C] bg-white px-2 text-[11px] font-semibold text-[#E6EDF7]"
+          className="rounded border border-border bg-panel px-2 text-[11px] font-semibold text-fg hover:border-accent"
           style={{ minHeight: 26, width: "fit-content" }}
         >
           Reset view

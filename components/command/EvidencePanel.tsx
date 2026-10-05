@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { hazardColor } from "@/lib/hazards";
 import type { SimilarIncident } from "@/lib/forecastTypes";
 import { PanelMessage } from "./ForecastPanel";
@@ -12,11 +13,17 @@ type Props = {
 };
 
 export function EvidencePanel({ incidents, referenceDate, loading, onFocus }: Props) {
+  const [collapsed, setCollapsed] = useState(false);
   return (
     <section aria-labelledby="evidence-h" className="flex shrink-0 flex-col">
       <h2 id="evidence-h" className="mb-1 text-[13px] font-semibold uppercase tracking-[0.08em] text-muted">
-        Similar past incidents
+        <button type="button" aria-expanded={!collapsed} onClick={() => setCollapsed((v) => !v)}
+          className="uppercase tracking-[0.08em] hover:text-fg">
+          <span aria-hidden className="mr-1">{collapsed ? "▸" : "▾"}</span>Similar past incidents
+        </button>
       </h2>
+      {!collapsed && (
+      <>
       <p className="mb-2 text-[11px] text-muted">
         Matched on place, season, weather and commodity — only incidents before{" "}
         {referenceDate ?? "the forecast date"}. Narrative search is ready for operator incident
@@ -62,6 +69,8 @@ export function EvidencePanel({ incidents, referenceDate, loading, onFocus }: Pr
             </li>
           ))}
         </ol>
+      )}
+      </>
       )}
     </section>
   );

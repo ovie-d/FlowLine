@@ -25,17 +25,21 @@ export function ForecastPanel({
   onOperatorChange,
   onAbout,
 }: Props) {
+  const [collapsed, setCollapsed] = useState(false);
   return (
     <section aria-labelledby="forecast-h" className="flex shrink-0 flex-col">
       <header className="mb-2 flex items-baseline justify-between gap-2">
         <h2 id="forecast-h" className="text-[13px] font-semibold uppercase tracking-[0.08em] text-muted">
-          Hazard forecast
+          <button type="button" aria-expanded={!collapsed} onClick={() => setCollapsed((v) => !v)}
+            className="uppercase tracking-[0.08em] hover:text-fg">
+            <span aria-hidden className="mr-1">{collapsed ? "▸" : "▾"}</span>Hazard forecast
+          </button>
         </h2>
         <button type="button" onClick={onAbout} className="text-[12px] text-accent hover:underline">
           About this model
         </button>
       </header>
-      {error ? (
+      {collapsed ? null : error ? (
         <PanelMessage tone="error" text={error} />
       ) : !forecast && !loading ? (
         <PanelMessage text="Click the map or search an area to forecast the likely mix of hazard types." />

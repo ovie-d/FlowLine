@@ -42,7 +42,7 @@ export function TopBar({ tab, onTab, corridors, onSearch, mode, onMode, date, on
   }
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-4 border-b border-border bg-panel px-4">
+    <header className="sticky top-0 z-30 flex min-h-14 shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-border bg-panel px-4 py-2 xl:h-14 xl:flex-nowrap xl:py-0">
       <FlowlineLogo size={26} />
       <nav aria-label="Views" className="flex rounded-md border border-border p-0.5" role="tablist">
         {TABS.map((t) => (
@@ -53,14 +53,14 @@ export function TopBar({ tab, onTab, corridors, onSearch, mode, onMode, date, on
         ))}
       </nav>
       {tab === "forecast" && (
-        <div className="ml-auto flex items-center gap-3">
+        <div className="ml-auto flex flex-wrap items-center gap-3">
           <form onSubmit={submit} className="relative" role="search">
             <label htmlFor="area-search" className="sr-only">Search an area</label>
             <input id="area-search" list="corridor-list" value={query}
               onChange={(e) => { setQuery(e.target.value); setNotFound(false); }}
               placeholder="Search area (e.g. Edson)"
               aria-invalid={notFound}
-              className="w-52 rounded-md border border-border bg-panel-2 px-2.5 py-1 text-[13px] text-fg placeholder:text-muted" />
+              className="w-44 rounded-md 2xl:w-52 border border-border bg-panel-2 px-2.5 py-1 text-[13px] text-fg placeholder:text-muted" />
             <datalist id="corridor-list">
               {corridors.map((c) => <option key={c.name} value={c.name} />)}
             </datalist>

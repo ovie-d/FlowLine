@@ -13,7 +13,7 @@ export function DecisionLog({ decisions }: Props) {
   return (
     <div
       className="flex flex-col gap-1.5 border-t border-border pt-2.5"
-      style={{ flex: "0 0 auto", maxHeight: 150, overflowY: "auto" }}
+      style={{ flex: "0 0 auto" }}
     >
       <div className="mt-1 text-[12px] font-semibold uppercase tracking-[0.08em] text-muted">
         Decision log

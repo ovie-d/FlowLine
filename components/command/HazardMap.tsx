@@ -60,36 +60,46 @@ function MapLegend({
   hidden: Set<HazardGroup>;
   onToggle: (g: HazardGroup) => void;
 }) {
+  const [open, setOpen] = useState(true);
   return (
-    <div className="absolute right-2 top-2 max-h-[calc(100%-3.5rem)] max-w-[230px] overflow-y-auto rounded-md border border-border bg-panel/90 p-2 text-[11px] backdrop-blur">
-      <div className="mb-1 font-semibold text-muted">Past incidents by hazard</div>
-      <ul className="grid gap-0.5">
-        {HAZARD_ORDER.map((g) => (
-          <li key={g}>
-            <button
-              type="button"
-              aria-pressed={!hidden.has(g)}
-              onClick={() => onToggle(g)}
-              className={`flex w-full items-center gap-1.5 rounded px-1 text-left hover:bg-panel-2 ${hidden.has(g) ? "opacity-40" : ""}`}
-            >
-              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: HAZARD_COLOR[g] }} />
-              <span className="text-fg">{HAZARD_SHORT[g]}</span>
-            </button>
+    <div className="absolute right-2 top-2 max-w-[230px] rounded-md border border-border bg-panel/90 p-2 text-[11px] backdrop-blur">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-2 font-semibold text-muted hover:text-fg"
+      >
+        Past incidents by hazard <span aria-hidden>{open ? "▾" : "▸"}</span>
+      </button>
+      {open && (
+        <ul className="mt-1 grid gap-0.5">
+          {HAZARD_ORDER.map((g) => (
+            <li key={g}>
+              <button
+                type="button"
+                aria-pressed={!hidden.has(g)}
+                onClick={() => onToggle(g)}
+                className={`flex w-full items-center gap-1.5 rounded px-1 text-left hover:bg-panel-2 ${hidden.has(g) ? "opacity-40" : ""}`}
+              >
+                <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: HAZARD_COLOR[g] }} />
+                <span className="text-fg">{HAZARD_SHORT[g]}</span>
+              </button>
+            </li>
+          ))}
+          <li className="flex items-center gap-1.5 px-1 text-muted">
+            <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: HAZARD_COLOR.other_unknown }} />
+            Other / unknown
           </li>
-        ))}
-        <li className="flex items-center gap-1.5 px-1 text-muted">
-          <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: HAZARD_COLOR.other_unknown }} />
-          Other / unknown
-        </li>
-        <li className="flex items-center gap-1.5 px-1 text-muted">
-          <span className="inline-block h-0.5 w-3" style={{ background: "#2DD4BF", opacity: 0.6 }} />
-          CER pipeline systems
-        </li>
-        <li className="flex items-center gap-1.5 px-1 text-muted">
-          <span className="inline-block h-2.5 w-2.5 rounded-sm border-2 border-fg" />
-          Crew base (sample)
-        </li>
-      </ul>
+          <li className="flex items-center gap-1.5 px-1 text-muted">
+            <span className="inline-block h-0.5 w-3" style={{ background: "#2DD4BF", opacity: 0.6 }} />
+            CER pipeline systems
+          </li>
+          <li className="flex items-center gap-1.5 px-1 text-muted">
+            <span className="inline-block h-2.5 w-2.5 rounded-sm border-2 border-fg" />
+            Crew base (sample)
+          </li>
+        </ul>
+      )}
     </div>
   );
 }

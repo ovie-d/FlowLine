@@ -2,7 +2,7 @@
 
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DecisionLog } from "@/components/DecisionLog";
 import { getDecisions } from "@/lib/api";
 import {
@@ -36,24 +36,6 @@ const RankingView = dynamic(() => import("@/components/ranking/RankingView"), {
 });
 
 const WEEK_HALF = 3;
-// Below this viewport height (e.g. a 13" laptop at 1280×800) the map gets priority
-// and the readiness drawer starts collapsed.
-const TALL_QUERY = "(min-height: 900px)";
-
-function subscribeTall(onChange: () => void): () => void {
-  const mq = window.matchMedia(TALL_QUERY);
-  mq.addEventListener("change", onChange);
-  return () => mq.removeEventListener("change", onChange);
-}
-
-function useTallScreen(): boolean {
-  return useSyncExternalStore(
-    subscribeTall,
-    () => window.matchMedia(TALL_QUERY).matches,
-    () => false,
-  );
-}
-
 /** Today's calendar date in Alberta as YYYY-MM-DD. */
 function albertaToday(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Edmonton" }).format(new Date());
@@ -89,10 +71,7 @@ export function CommandCenter() {
   const [operator, setOperator] = useState<string | null>(null);
   const [focus, setFocus] = useState<MapFocus | null>(null);
   const [hidden, setHidden] = useState<Set<HazardGroup>>(new Set());
-  const tall = useTallScreen();
-  const [drawerPref, setDrawerPref] = useState<boolean | null>(null);
-  const drawerOpen = drawerPref ?? tall;
-  const setDrawerOpen = (open: boolean) => setDrawerPref(open);
+  const [drawerOpen, setDrawerOpen] = useState(true);
   const [dispatch, setDispatch] = useState<DispatchState>(INITIAL_DISPATCH);
   const [crewsOpen, setCrewsOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -173,7 +152,7 @@ export function CommandCenter() {
   const similar = useMemo(() => readiness?.similar.incidents ?? [], [readiness]);
 
   return (
-    <div className="flex h-dvh min-h-[600px] flex-col">
+    <div className="flex min-h-dvh flex-col">
       <TopBar
         tab={tab}
         onTab={setTab}
@@ -189,11 +168,13 @@ export function CommandCenter() {
           Backend unreachable — start the API (uvicorn api.main:app) and the database (docker compose up -d).
         </div>
       )}
-      <main className="flex min-h-0 flex-1 flex-col">
+      <main className="flex flex-1 flex-col">
         {tab === "forecast" && (
           <>
-            <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_380px]">
-              <div className="relative min-h-[320px]">
+            <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_400px]">
+              {/* Map stays large. On wide screens it fills the viewport under the pinned top
+                  bar and stays in view while the forecast column scrolls beside it. */}
+              <div className="relative h-[clamp(360px,65vh,820px)] xl:sticky xl:top-14 xl:h-[calc(100dvh-3.5rem)]">
                 <HazardMap
                   incidents={incidentsQ.data ?? null}
                   pipelines={pipelinesQ.data ?? null}
@@ -216,7 +197,7 @@ export function CommandCenter() {
                   }
                 />
               </div>
-              <aside className="flex min-h-0 flex-col gap-5 overflow-y-auto border-l border-border bg-panel p-4">
+              <aside className="flex min-w-0 flex-col gap-5 border-t border-border bg-panel p-4 xl:border-l xl:border-t-0">
                 <ForecastPanel
                   forecast={forecast}
                   loading={readinessQ.isFetching}
@@ -264,12 +245,12 @@ export function CommandCenter() {
           </>
         )}
         {tab === "ranking" && (
-          <div className="min-h-0 flex-1">
+          <div className="flex-1">
             <RankingView />
           </div>
         )}
         {tab === "decisions" && (
-          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          <div className="flex-1 p-4">
             <div className="mx-auto max-w-4xl rounded-lg border border-border bg-panel p-4 text-fg">
               {decisionsQ.error ? (
                 <PanelMessage tone="error" text={errorText(decisionsQ.error) ?? ""} />

@@ -34,16 +34,7 @@ export function MapDetailsCard({
   return (
     <section
       className="flex min-h-0 flex-col rounded-xl border border-border bg-panel"
-      style={{
-        flex: "0 0 320px",
-        width: 320,
-        maxWidth: 320,
-        minHeight: 0,
-        height: "100%",
-        padding: 14,
-        boxSizing: "border-box",
-        overflow: "hidden",
-      }}
+      style={{ padding: 14, boxSizing: "border-box", minWidth: 0 }}
     >
       <div
         role="tablist"
@@ -63,16 +54,15 @@ export function MapDetailsCard({
         />
       </div>
 
-      <div
-        className="min-h-0"
-        style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}
-      >
+      <div>
         {tab === "map" ? (
+          <div style={{ height: 460 }}>
           <CorridorMapView
             ranking={ranking}
             selected={selected}
             onSelect={onSelect}
           />
+          </div>
         ) : (
           <CorridorDetails
             detail={detail}

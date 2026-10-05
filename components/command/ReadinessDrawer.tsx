@@ -41,12 +41,12 @@ export type { DispatchState };
 
 function Card({ title, children, aside }: { title: string; children: React.ReactNode; aside?: React.ReactNode }) {
   return (
-    <section className="flex min-h-0 min-w-0 flex-col rounded-lg border border-border bg-panel p-3">
+    <section className="flex min-w-0 flex-col rounded-lg border border-border bg-panel p-3">
       <header className="mb-2 flex items-center justify-between gap-2">
         <h3 className="text-[12px] font-semibold uppercase tracking-[0.08em] text-muted">{title}</h3>
         {aside}
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto pr-1">{children}</div>
+      <div>{children}</div>
     </section>
   );
 }
@@ -69,9 +69,9 @@ export function ReadinessDrawer(p: Props) {
   return (
     <section
       aria-label="Readiness and dispatch"
-      className={`border-t border-border bg-bg transition-[height] ${p.open ? "h-[300px]" : "h-10"}`}
+      className="border-t border-border bg-bg"
     >
-      <div className="flex h-10 items-center justify-between px-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2">
         <button type="button" onClick={p.onToggle} aria-expanded={p.open}
           className="text-[13px] font-semibold uppercase tracking-[0.08em] text-muted hover:text-fg">
           {p.open ? "▾" : "▴"} Readiness &amp; dispatch
@@ -100,7 +100,7 @@ export function ReadinessDrawer(p: Props) {
         </div>
       </div>
       {p.open && (
-        <div className="grid h-[260px] grid-cols-1 gap-3 overflow-x-auto px-4 pb-3 md:grid-cols-2 xl:grid-cols-[1.25fr_1fr_1.25fr_1.25fr]">
+        <div className="grid grid-cols-1 items-start gap-3 px-4 pb-4 md:grid-cols-2 2xl:grid-cols-4">
           <CrewsCard readiness={p.readiness} loading={p.loading} />
           <WeatherCard readiness={p.readiness} loading={p.loading} washout={p.washout} />
           <DispatchCard {...p} />
