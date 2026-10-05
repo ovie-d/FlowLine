@@ -149,3 +149,24 @@ CREATE TABLE IF NOT EXISTS pipelines (
   geom                geography(MultiLineString, 4326) NOT NULL
 );
 CREATE INDEX IF NOT EXISTS pipelines_geom_idx ON pipelines USING gist (geom);
+
+-- Phase 5 (decision A): structured context vectors for similar-incident evidence.
+-- Dimension = core.similar.VECTOR_DIM (geo 3 + season 2 + weather 4 + commodity 2).
+CREATE TABLE IF NOT EXISTS incident_context (
+  incident_number     text PRIMARY KEY REFERENCES incidents ON DELETE CASCADE,
+  vec                 vector(11) NOT NULL,
+  weather_known       boolean NOT NULL
+);
+CREATE INDEX IF NOT EXISTS incident_context_hnsw
+  ON incident_context USING hnsw (vec vector_l2_ops);
+
+CREATE TABLE IF NOT EXISTS similarity_meta (
+  id                  integer PRIMARY KEY CHECK (id = 1),
+  medians             jsonb NOT NULL,
+  scales              jsonb NOT NULL,
+  updated_at          timestamptz NOT NULL DEFAULT now()
+);
+
+-- Narrative embeddings (pilot): cosine HNSW index, empty until narratives are loaded.
+CREATE INDEX IF NOT EXISTS incident_embeddings_hnsw
+  ON incident_embeddings USING hnsw (embedding vector_cosine_ops);

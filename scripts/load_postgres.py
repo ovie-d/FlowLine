@@ -11,7 +11,6 @@ so planner edits are never overwritten.
 from __future__ import annotations
 
 import json
-import math
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -25,6 +24,7 @@ from core.data import DATA_PATH, clear_load_cache, load_incidents
 from core.db import INCIDENT_COLUMNS, db_path
 from core.env import load_dotenv
 from core.pg import connect
+from core.similar import VECTOR_DIM, WEATHER_SCALES, context_vector, vector_literal
 from core.sites import assign_sites
 from core.storage import DECISIONS_PATH
 from core.taxonomy import MODEL_TARGETS, all_hazards
@@ -168,6 +168,49 @@ def load_weather(conn: psycopg.Connection) -> int:
     return len(rows)
 
 
+def load_context(conn: psycopg.Connection) -> tuple[int, int]:
+    """Structured context vectors (core.similar) + national weather medians."""
+    names = list(WEATHER_SCALES)
+    medians_row = conn.execute(
+        "SELECT "
+        + ", ".join(
+            f"percentile_cont(0.5) WITHIN GROUP (ORDER BY {n}) AS {n}" for n in names
+        )
+        + " FROM incident_weather"
+    ).fetchone()
+    medians = {n: float(medians_row[n] or 0.0) for n in names}
+    conn.execute(
+        "INSERT INTO similarity_meta (id, medians, scales) VALUES (1, %s::jsonb, %s::jsonb) "
+        "ON CONFLICT (id) DO UPDATE SET medians = EXCLUDED.medians, "
+        "scales = EXCLUDED.scales, updated_at = now()",
+        (json.dumps(medians), json.dumps(WEATHER_SCALES)),
+    )
+    rows = conn.execute(
+        "SELECT i.incident_number, i.latitude, i.longitude, i.event_date, i.commodity, "
+        + ", ".join(f"w.{n}" for n in names)
+        + " FROM incidents i LEFT JOIN incident_weather w USING (incident_number)"
+    ).fetchall()
+    out = []
+    for r in rows:
+        vec, known = context_vector(
+            r["latitude"],
+            r["longitude"],
+            r["event_date"],
+            {n: r[n] for n in names},
+            r["commodity"],
+            medians,
+        )
+        assert len(vec) == VECTOR_DIM
+        out.append((r["incident_number"], vector_literal(vec), known))
+    conn.cursor().executemany(
+        "INSERT INTO incident_context (incident_number, vec, weather_known) "
+        "VALUES (%s, %s::vector, %s) ON CONFLICT (incident_number) DO UPDATE "
+        "SET vec = EXCLUDED.vec, weather_known = EXCLUDED.weather_known",
+        out,
+    )
+    return len(out), sum(1 for *_, k in out if k)
+
+
 def load_pipelines(conn: psycopg.Connection) -> tuple[int, str]:
     path = PIPELINES_NATIONAL if PIPELINES_NATIONAL.exists() else PIPELINES_AB
     features = json.loads(path.read_text(encoding="utf-8"))["features"]
@@ -307,6 +350,8 @@ def main() -> None:
         n_inc = load_incident_table(conn)
         print(f"incidents: {n_inc} upserted")
         print(f"incident_weather: {load_weather(conn)} upserted")
+        n_ctx, n_known = load_context(conn)
+        print(f"incident_context: {n_ctx} vectors ({n_known} with full weather)")
         n_pipe, src = load_pipelines(conn)
         print(f"pipelines: {n_pipe} from {src}")
         conn.commit()
