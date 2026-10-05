@@ -31,6 +31,7 @@ from core.features import (
     ALL_FEATURES,
     AREA_FEATURES,
     FEATURE_GROUPS,
+    MODEL_WEATHER_FEATURES,
     training_frame,
 )
 from core.metrics import (
@@ -68,6 +69,11 @@ VARIANTS: dict[str, tuple[str, ...]] = {
     ),
 }
 FULL = "Model (all features)"
+ABLATION_LABELS: dict[str, str] = {
+    "Model − weather": "remove weather",
+    "Model − area history": "remove area history",
+    "Model − weather − area history": "remove weather and area history",
+}
 
 INCIDENTS_SQL = """
 SELECT i.incident_number, i.event_date, i.closed_date, i.province, i.is_alberta,
@@ -236,6 +242,13 @@ def section_split(
                 f"national, {int(ab_te.sum())} Alberta). Point estimate with 95% bootstrap CI "
                 "(1,000 resamples of test incidents)."
             ),
+            (
+                "Baselines: *national base rate* = training-period hazard mix for every "
+                "incident; *province base rate* = the incident's own province mix (for "
+                "Alberta this is the Alberta base rate), smoothed toward national with "
+                f"{PROVINCE_ALPHA:.0f} pseudo-incidents; *area history only* = site-weighted "
+                f"prior mix within 25 km, smoothed with {AREA_ALPHA:.0f} pseudo-sites."
+            ),
             "### Canada",
             metric_table(preds, yte),
             f"Paired differences vs the best baseline (**{ref_nat}**):",
@@ -321,7 +334,7 @@ def section_ablation(
             )
             rows.append(
                 [
-                    name.replace("Model − ", "remove "),
+                    ABLATION_LABELS[name],
                     label,
                     f"{d:+.3f} [{lo:+.3f}, {hi:+.3f}]",
                     verdict,
@@ -345,6 +358,20 @@ def section_ablation(
             ),
         ]
     )
+
+
+def mix_table(preds: dict[str, np.ndarray], y: np.ndarray, names: list[str]) -> str:
+    """Mean predicted share per class vs realised share (what the UI shows)."""
+    realised = np.bincount(y, minlength=K) / max(len(y), 1)
+    rows = [
+        [
+            HAZARD_LABELS[c],
+            f"{realised[k]:.1%}",
+            *(f"{preds[n][:, k].mean():.1%}" for n in names),
+        ]
+        for k, c in enumerate(MODEL_TARGETS)
+    ]
+    return md_table(["hazard group", "realised share", *names], rows)
 
 
 def section_failures(
@@ -397,6 +424,17 @@ def section_failures(
                 {k: v[ab] for k, v in preds.items()},
                 y[ab],
                 [FULL, "Baseline: area history only"],
+            ),
+            (
+                "Top-1 recall is a harsh view of a *mix* forecaster: rare classes are almost "
+                "never the single most likely hazard. The product shows the mix, so the "
+                "next table compares the average forecast mix with what actually happened."
+            ),
+            "### Predicted mix vs realised mix, Alberta test",
+            mix_table(
+                {k: v[ab] for k, v in preds.items()},
+                y[ab],
+                [FULL, "Baseline: national base rate", "Baseline: area history only"],
             ),
             "### Confusion matrix (full model, Canada test, top-1)",
             confusion_table(full, y),
@@ -516,7 +554,7 @@ def section_shap(model: HazardModel, X_test: pd.DataFrame) -> str:
                 "Mean |SHAP| over test incidents and classes (raw-margin scale). Per-forecast "
                 "top drivers are returned by the API in plain words."
             ),
-            md_table(["feature", "group", "mean |SHAP|"], rows),
+            md_table(["feature", "group", "mean abs SHAP"], rows),
         ]
     )
 
@@ -547,7 +585,7 @@ def plot_calibration(preds: dict[str, np.ndarray], y: np.ndarray) -> None:
 
 
 def section_data(df: pd.DataFrame, X: pd.DataFrame) -> str:
-    wx = X[list(WEATHER_FEATURES)].notna().all(axis=1).mean()
+    wx = X[list(MODEL_WEATHER_FEATURES)].notna().all(axis=1).mean()
     temp = X["temp_mean_7d"].notna().mean()
     return "\n\n".join(
         [
@@ -589,6 +627,32 @@ def conclusion(preds: dict[str, np.ndarray], y: np.ndarray, ab: np.ndarray) -> s
             f"- **{label}:** the full model {verdict} (*{ref}*) on log loss: "
             f"Δ = {d:+.3f}, 95% CI [{lo:+.3f}, {hi:+.3f}] (n = {int(mask.sum())})."
         )
+    for name, label in (
+        ("Model − weather", "Weather"),
+        ("Model − area history", "Area history"),
+    ):
+        for region, mask in (("Canada", np.ones_like(ab)), ("Alberta", ab)):
+            d, lo, hi = paired_difference(
+                METRICS["log_loss"], preds[FULL][mask], preds[name][mask], y[mask]
+            )
+            verdict = (
+                "helps"
+                if hi < 0
+                else ("hurts" if lo > 0 else "makes no measurable difference")
+            )
+            lines.append(
+                f"- **{label} features, {region}:** {verdict} "
+                f"(Δ log loss full − without = {d:+.3f}, 95% CI [{lo:+.3f}, {hi:+.3f}])."
+            )
+    lines.append(
+        "- **Reading the weather result:** a weather signal exists in the raw data (§6: "
+        "post-2022 Alberta washouts followed wetter months than other incidents), but the "
+        "model cannot learn it from the training years, when geotechnical incidents were "
+        "rare in Alberta. Raw station totals also mix climate with weather. Likely next "
+        "steps: precipitation *anomaly* versus each station's normal, river-crossing and "
+        "slope proximity, and more years of data — all to be judged on the rolling-origin "
+        "check, never on the test set."
+    )
     return "\n".join(lines)
 
 

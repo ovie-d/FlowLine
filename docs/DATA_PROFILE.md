@@ -483,6 +483,21 @@ Rows: the 1,937 incidents whose hazard group is a forecast target. `V(missing, c
 | Regulation (OPR / PPR) | 20.8% | 2.9% – 35.4% | Ground movement, washout & geotechnical | 0.211 | 0.086 | LEAKS via missingness | partly — by operator | **exclude** |
 | Land Use | 0.0% | 0.0% – 0.0% | — | 0.0 | 0.255 | ok (always filled) | only via land-cover layer | only if joined from that source |
 | Population Density | 0.0% | 0.0% – 0.0% | — | 0.0 | 0.159 | ok (always filled) | only via census layer | only if joined from that source |
+| Weather: `temp_mean_d0` | 7.6% | 5.3% – 9.4% | Equipment & component failure | 0.0 | 0.078 | ok | yes — ECCC history / Open-Meteo forecast | candidate |
+| Weather: `temp_min_d0` | 7.0% | 4.9% – 9.0% | Fire / ignition hazard | 0.0 | 0.076 | ok | yes — ECCC history / Open-Meteo forecast | candidate |
+| Weather: `temp_max_d0` | 7.6% | 5.3% – 9.4% | Equipment & component failure | 0.0 | 0.076 | ok | yes — ECCC history / Open-Meteo forecast | candidate |
+| Weather: `temp_mean_7d` | 8.5% | 5.8% – 12.6% | Fire / ignition hazard | 0.0 | 0.07 | ok | yes — ECCC history / Open-Meteo forecast | candidate |
+| Weather: `temp_min_7d` | 7.6% | 4.5% – 10.8% | Fire / ignition hazard | 0.005 | 0.068 | ok | yes — ECCC history / Open-Meteo forecast | candidate |
+| Weather: `temp_max_7d` | 7.8% | 4.5% – 10.8% | Fire / ignition hazard | 0.027 | 0.077 | ok | yes — ECCC history / Open-Meteo forecast | candidate |
+| Weather: `temp_mean_30d` | 5.1% | 2.2% – 8.1% | Fire / ignition hazard | 0.035 | 0.078 | ok | yes — ECCC history / Open-Meteo forecast | candidate |
+| Weather: `temp_min_30d` | 5.1% | 2.2% – 8.1% | Fire / ignition hazard | 0.035 | 0.071 | ok | yes — ECCC history / Open-Meteo forecast | candidate |
+| Weather: `temp_max_30d` | 5.1% | 2.2% – 8.1% | Fire / ignition hazard | 0.035 | 0.082 | ok | yes — ECCC history / Open-Meteo forecast | candidate |
+| Weather: `freeze_thaw_30d` | 5.1% | 2.2% – 8.1% | Fire / ignition hazard | 0.035 | 0.055 | ok | yes — ECCC history / Open-Meteo forecast | candidate |
+| Weather: `precip_7d` | 9.2% | 6.0% – 11.7% | Fire / ignition hazard | 0.0 | 0.067 | ok | yes — ECCC history / Open-Meteo forecast | candidate |
+| Weather: `precip_30d` | 5.2% | 1.3% – 8.1% | Fire / ignition hazard | 0.047 | 0.061 | ok | yes — ECCC history / Open-Meteo forecast | candidate |
+| Weather: `snow_on_ground_d0` | 14.8% | 9.8% – 30.4% | Ground movement, washout & geotechnical | 0.177 | 0.084 | caution | yes — ECCC history / Open-Meteo forecast | candidate (watch) |
+| Weather: `temp_station_km` | 5.1% | 2.2% – 8.1% | Fire / ignition hazard | 0.035 | 0.084 | ok | yes — ECCC history / Open-Meteo forecast | candidate |
+| Weather: `precip_station_km` | 5.2% | 1.3% – 8.1% | Fire / ignition hazard | 0.047 | 0.094 | ok | yes — ECCC history / Open-Meteo forecast | candidate |
 
 **Commodity carried** is derived from the incident's operator via the CER Pipeline Systems layer (`data/cer_pipeline_systems.csv`, `core/operators.py`), not from any release field. Where the incident's own *Substance carried* is filled, the two agree on gas vs liquid in all but one row. Its missingness is low and not class-dependent; it is a candidate feature.
 
@@ -490,4 +505,4 @@ Rows: the 1,937 incidents whose hazard group is a forecast target. `V(missing, c
 
 **Event date source:** the occurrence date is missing for most geotechnical incidents (washouts are *discovered*, not seen happening), so their event date is the discovery date. Weather windows are anchored on `event_date` for every incident; the date-source flag itself is never a feature, because it alone would reveal the class. Consequence for interpretation: for washouts, "prior 7/30 days" means before discovery.
 
-**Weather (Phase 3), distance to pipeline and area history (Phase 6)** are computed from independent sources; their missingness vs class is checked in `docs/MODEL_REPORT.md` once built.
+**Snow on ground** is excluded from the model (`core/features.py`): its missingness tracks season and class (stations stop reporting in summer), and live Open-Meteo data would always fill it. It stays in the database and the similarity search. **Weather** rows come from `scripts/fetch_weather.py` (coverage in `docs/WEATHER_COVERAGE.md`); station distance rows test whether *how far the nearest usable station is* differs by class. **Distance to pipeline and area history** (Phase 6) are computed from independent sources; their check goes in `docs/MODEL_REPORT.md`.

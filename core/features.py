@@ -29,6 +29,14 @@ from core.taxonomy import MODEL_TARGETS
 from core.weather import FEATURE_NAMES as WEATHER_FEATURES
 
 AREA_RADIUS_KM = 25.0
+
+# Snow on ground is stored but not a model feature: many stations stop reporting it
+# in summer, so its missingness tracks season and class (DATA_PROFILE §9, "caution"),
+# and live Open-Meteo data always fills it (train/serve skew).
+EXCLUDED_WEATHER: frozenset[str] = frozenset({"snow_on_ground_d0"})
+MODEL_WEATHER_FEATURES: tuple[str, ...] = tuple(
+    f for f in WEATHER_FEATURES if f not in EXCLUDED_WEATHER
+)
 EPOCH = date(1970, 1, 1)
 
 CATEGORICAL_FEATURES: tuple[str, ...] = ("province", "operator_group", "commodity")
@@ -51,7 +59,7 @@ AREA_FEATURES: tuple[str, ...] = (
 FEATURE_GROUPS: dict[str, tuple[str, ...]] = {
     "location_time": LOCATION_TIME_FEATURES,
     "context": CATEGORICAL_FEATURES,
-    "weather": WEATHER_FEATURES,
+    "weather": MODEL_WEATHER_FEATURES,
     "area_history": AREA_FEATURES,
 }
 ALL_FEATURES: tuple[str, ...] = tuple(f for g in FEATURE_GROUPS.values() for f in g)

@@ -674,6 +674,10 @@ def section_leakage(df: pd.DataFrame) -> str:
                 'interpretation: for washouts, "prior 7/30 days" means before discovery.'
             ),
             (
+                "**Snow on ground** is excluded from the model (`core/features.py`): its "
+                "missingness tracks season and class (stations stop reporting in summer), "
+                "and live Open-Meteo data would always fill it. It stays in the database "
+                "and the similarity search. "
                 "**Weather** rows come from `scripts/fetch_weather.py` (coverage in "
                 "`docs/WEATHER_COVERAGE.md`); station distance rows test whether *how far "
                 "the nearest usable station is* differs by class. **Distance to pipeline "
