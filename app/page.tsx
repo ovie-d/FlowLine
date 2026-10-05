@@ -260,7 +260,7 @@ export default function Home() {
 
   return (
     <div
-      className="bg-[#F5F5F3] text-[#15171A] antialiased"
+      className="legacy-light bg-[#F5F5F3] text-[#15171A] antialiased"
       style={{
         height: "100vh",
         display: "flex",
