@@ -16,6 +16,7 @@ Also writes the deployable model (trained on all labelled data) to models/.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -31,7 +32,7 @@ from core.features import (
     ALL_FEATURES,
     AREA_FEATURES,
     FEATURE_GROUPS,
-    MODEL_WEATHER_FEATURES,
+    WEATHER_CANDIDATES,
     training_frame,
 )
 from core.metrics import (
@@ -60,20 +61,22 @@ AREA_ALPHA = 2.0  # pseudo-sites pulling an area's mix toward national
 LOW_EVIDENCE_SITES = 3  # fewer known prior sites within 25 km = sparse area
 K = len(MODEL_TARGETS)
 
+FULL = "Model (deployed)"
+WITH_WEATHER = "Model + weather (rejected)"
+NO_AREA = "Model − area history"
 VARIANTS: dict[str, tuple[str, ...]] = {
-    "Model (all features)": ALL_FEATURES,
-    "Model − weather": tuple(f for f in ALL_FEATURES if f not in WEATHER_FEATURES),
-    "Model − area history": tuple(f for f in ALL_FEATURES if f not in AREA_FEATURES),
-    "Model − weather − area history": tuple(
-        f for f in ALL_FEATURES if f not in WEATHER_FEATURES and f not in AREA_FEATURES
-    ),
+    FULL: ALL_FEATURES,
+    WITH_WEATHER: (*ALL_FEATURES, *WEATHER_CANDIDATES),
+    NO_AREA: tuple(f for f in ALL_FEATURES if f not in AREA_FEATURES),
 }
-FULL = "Model (all features)"
-ABLATION_LABELS: dict[str, str] = {
-    "Model − weather": "remove weather",
-    "Model − area history": "remove area history",
-    "Model − weather − area history": "remove weather and area history",
+# variant -> (change described, meaning when the deployed model is better / worse)
+ABLATION_LABELS: dict[str, tuple[str, str, str]] = {
+    WITH_WEATHER: ("add weather back", "weather hurts", "weather helps"),
+    NO_AREA: ("remove area history", "area history helps", "area history hurts"),
 }
+SUMMARY_PATH = ROOT / "models" / "hazard_forecast.eval.json"
+LOWER_CERTAINTY_ABOVE = 0.5
+
 
 INCIDENTS_SQL = """
 SELECT i.incident_number, i.event_date, i.closed_date, i.province, i.is_alberta,
@@ -264,8 +267,8 @@ def section_split(
 
 def section_rolling(
     X: pd.DataFrame, y: pd.Series, years: pd.Series, ab: pd.Series
-) -> str:
-    rows = []
+) -> tuple[str, list[dict[str, object]]]:
+    rows, data = [], []
     for year in ROLLING_YEARS:
         train_mask, test_mask = years < year, years == year
         if test_mask.sum() == 0:
@@ -278,6 +281,16 @@ def section_rolling(
         p_area = area_baseline(ytr, Xte)
         ab_te = ab[test_mask].to_numpy()
         d, lo, hi = paired_difference(METRICS["log_loss"], p_model, p_nat, yte)
+        data.append(
+            {
+                "year": year,
+                "n": int(test_mask.sum()),
+                "n_alberta": int(ab_te.sum()),
+                "model_log_loss": round(METRICS["log_loss"](p_model, yte), 3),
+                "national_base_log_loss": round(METRICS["log_loss"](p_nat, yte), 3),
+                "delta_vs_national": [round(d, 3), round(lo, 3), round(hi, 3)],
+            }
+        )
         rows.append(
             [
                 year,
@@ -305,7 +318,7 @@ def section_rolling(
         "top-3 model / national",
         "AB log loss model / national",
     ]
-    return "\n\n".join(
+    text = "\n\n".join(
         [
             "## 3. Rolling-origin check",
             (
@@ -315,41 +328,66 @@ def section_rolling(
             md_table(header, rows),
         ]
     )
+    return text, data
+
+
+def ablation_rows(
+    preds: dict[str, np.ndarray], y: np.ndarray, ab: np.ndarray
+) -> list[dict[str, object]]:
+    """Deployed model vs each variant, Canada and Alberta (paired bootstrap)."""
+    out = []
+    for name, (change, deployed_better, variant_better) in ABLATION_LABELS.items():
+        for region, mask in (("Canada", np.ones_like(ab)), ("Alberta", ab)):
+            d, lo, hi = paired_difference(
+                METRICS["log_loss"], preds[FULL][mask], preds[name][mask], y[mask]
+            )
+            verdict = (
+                deployed_better
+                if hi < 0
+                else (variant_better if lo > 0 else "no measurable difference")
+            )
+            out.append(
+                {
+                    "change": change,
+                    "region": region,
+                    "delta": d,
+                    "lo": lo,
+                    "hi": hi,
+                    "verdict": verdict,
+                }
+            )
+    return out
 
 
 def section_ablation(
     preds: dict[str, np.ndarray], y: np.ndarray, ab: np.ndarray
 ) -> str:
-    rows = []
-    full = preds[FULL]
-    for name in VARIANTS:
-        if name == FULL:
-            continue
-        for label, mask in (("Canada", np.ones_like(ab)), ("Alberta", ab)):
-            d, lo, hi = paired_difference(
-                METRICS["log_loss"], full[mask], preds[name][mask], y[mask]
-            )
-            verdict = (
-                "helps" if hi < 0 else ("hurts" if lo > 0 else "not distinguishable")
-            )
-            rows.append(
-                [
-                    ABLATION_LABELS[name],
-                    label,
-                    f"{d:+.3f} [{lo:+.3f}, {hi:+.3f}]",
-                    verdict,
-                ]
-            )
+    rows = [
+        [
+            r["change"],
+            r["region"],
+            f"{r['delta']:+.3f} [{r['lo']:+.3f}, {r['hi']:+.3f}]",
+            r["verdict"],
+        ]
+        for r in ablation_rows(preds, y, ab)
+    ]
     return "\n\n".join(
         [
             "## 4. Ablation — do weather and area history help?",
             (
-                "Δ = log loss of the full model minus the ablated model on the same test "
-                "incidents (negative = the removed features were helping)."
+                "Δ = log loss of the deployed model minus the variant on the same test "
+                "incidents (negative = the deployed model is better)."
             ),
             md_table(
-                ["ablation", "test set", "Δ log loss full − ablated [CI]", "verdict"],
+                ["change", "test set", "Δ log loss deployed − variant [CI]", "verdict"],
                 rows,
+            ),
+            (
+                "**Decision (2026-10-05):** weather made no measurable difference in the "
+                "previous evaluation, so it was removed from the forecast model. Weather "
+                "stays in the database, the similar-incident search, briefings and as a "
+                "context panel; the forecast has no weather override sliders. The variant "
+                "above re-checks that decision on every run."
             ),
             (
                 "**Narrative features:** not available. Public CER data has cause codes only, "
@@ -499,8 +537,8 @@ def section_washout(
     actual = (ab & is_geo).sum() / max(ab.sum(), 1)
     d, lo, hi = paired_difference(
         lambda p_, y_: float(np.mean(p_[y_ == g, g])) if (y_ == g).any() else 0.0,
+        preds[WITH_WEATHER][ab],
         preds[FULL][ab],
-        preds["Model − weather"][ab],
         y[ab],
     )
     return "\n\n".join(
@@ -532,7 +570,7 @@ def section_washout(
             ),
             (
                 f"Weather's contribution to p(geotech) on actual Alberta geotechnical cases "
-                f"(full − no-weather): **{d:+.1%}** [95% CI {lo:+.1%}, {hi:+.1%}]."
+                f"(with weather − deployed): **{d:+.1%}** [95% CI {lo:+.1%}, {hi:+.1%}]."
             ),
         ]
     )
@@ -585,7 +623,7 @@ def plot_calibration(preds: dict[str, np.ndarray], y: np.ndarray) -> None:
 
 
 def section_data(df: pd.DataFrame, X: pd.DataFrame) -> str:
-    wx = X[list(MODEL_WEATHER_FEATURES)].notna().all(axis=1).mean()
+    wx = X[list(WEATHER_CANDIDATES)].notna().all(axis=1).mean()
     temp = X["temp_mean_7d"].notna().mean()
     return "\n\n".join(
         [
@@ -594,12 +632,13 @@ def section_data(df: pd.DataFrame, X: pd.DataFrame) -> str:
                 f"- Incidents in the database: {len(df):,}; forecast-target incidents: {len(X):,} "
                 "(Other / unknown and Undetermined are excluded from the target)."
             ),
-            f"- Features ({len(ALL_FEATURES)}): "
+            f"- Deployed model features ({len(ALL_FEATURES)}): "
             + "; ".join(f"**{g}** ({len(fs)})" for g, fs in FEATURE_GROUPS.items())
-            + ".",
+            + f". Weather ({len(WEATHER_CANDIDATES)} features) is evaluated as a rejected "
+            "variant only.",
             (
-                f"- Weather coverage on target incidents: temperature {temp:.1%}, all weather "
-                f"features {wx:.1%} (missing stays missing; LightGBM handles NaN)."
+                f"- Weather coverage on target incidents (variant only): temperature "
+                f"{temp:.1%}, all weather features {wx:.1%} (missing stays missing)."
             ),
             (
                 "- Area history: incidents strictly before the event date within 25 km; the "
@@ -624,36 +663,93 @@ def conclusion(preds: dict[str, np.ndarray], y: np.ndarray, ab: np.ndarray) -> s
         else:
             verdict = "is **not distinguishable** from the best baseline"
         lines.append(
-            f"- **{label}:** the full model {verdict} (*{ref}*) on log loss: "
+            f"- **{label}:** the deployed model {verdict} (*{ref}*) on log loss: "
             f"Δ = {d:+.3f}, 95% CI [{lo:+.3f}, {hi:+.3f}] (n = {int(mask.sum())})."
         )
-    for name, label in (
-        ("Model − weather", "Weather"),
-        ("Model − area history", "Area history"),
-    ):
-        for region, mask in (("Canada", np.ones_like(ab)), ("Alberta", ab)):
-            d, lo, hi = paired_difference(
-                METRICS["log_loss"], preds[FULL][mask], preds[name][mask], y[mask]
-            )
-            verdict = (
-                "helps"
-                if hi < 0
-                else ("hurts" if lo > 0 else "makes no measurable difference")
-            )
-            lines.append(
-                f"- **{label} features, {region}:** {verdict} "
-                f"(Δ log loss full − without = {d:+.3f}, 95% CI [{lo:+.3f}, {hi:+.3f}])."
-            )
+    for r in ablation_rows(preds, y, ab):
+        lines.append(
+            f"- **{r['change'].capitalize()}, {r['region']}:** {r['verdict']} "
+            f"(Δ log loss deployed − variant = {r['delta']:+.3f}, "
+            f"95% CI [{r['lo']:+.3f}, {r['hi']:+.3f}])."
+        )
     lines.append(
-        "- **Reading the weather result:** a weather signal exists in the raw data (§6: "
-        "post-2022 Alberta washouts followed wetter months than other incidents), but the "
-        "model cannot learn it from the training years, when geotechnical incidents were "
-        "rare in Alberta. Raw station totals also mix climate with weather. Likely next "
-        "steps: precipitation *anomaly* versus each station's normal, river-crossing and "
-        "slope proximity, and more years of data — all to be judged on the rolling-origin "
-        "check, never on the test set."
+        "- **Weather is not a forecast input** (decision 2026-10-05). A weather signal "
+        "exists in the raw data (§6: post-2022 Alberta washouts followed wetter months than "
+        "other incidents), but the model cannot learn it from the training years, when "
+        "geotechnical incidents were rare in Alberta. It is shown as an observed pattern, "
+        "not a forecast. Backlog: *Washout watch* (rainfall anomaly, waterway crossings), "
+        "judged only on the rolling-origin check."
     )
     return "\n".join(lines)
+
+
+def _ci(metric: str, p: np.ndarray, y: np.ndarray) -> list[float]:
+    return [round(v, 3) for v in bootstrap(METRICS[metric], p, y)]
+
+
+def region_summary(preds: dict[str, np.ndarray], y: np.ndarray) -> dict[str, object]:
+    ref = best_baseline(preds, y)
+    d, lo, hi = paired_difference(METRICS["log_loss"], preds[FULL], preds[ref], y)
+    return {
+        "n_test": len(y),
+        "model": {m: _ci(m, preds[FULL], y) for m in METRICS},
+        "best_baseline": {"name": ref, **{m: _ci(m, preds[ref], y) for m in METRICS}},
+        "delta_log_loss_vs_best_baseline": [round(d, 3), round(lo, 3), round(hi, 3)],
+        "beats_best_baseline": bool(hi < 0),
+    }
+
+
+def high_confidence_calibration(p: np.ndarray, y: np.ndarray) -> dict[str, object]:
+    """How often forecasts above LOWER_CERTAINTY_ABOVE came true (one-vs-rest)."""
+    hits = np.zeros_like(p)
+    hits[np.arange(len(y)), y] = 1.0
+    mask = p > LOWER_CERTAINTY_ABOVE
+    return {
+        "threshold": LOWER_CERTAINTY_ABOVE,
+        "n_forecasts_above": int(mask.sum()),
+        "mean_predicted": round(float(p[mask].mean()), 3) if mask.any() else None,
+        "observed_rate": round(float(hits[mask].mean()), 3) if mask.any() else None,
+        "display_rule": "Probabilities above 50% are shown as '>50%, lower certainty'.",
+    }
+
+
+def write_summary(
+    preds: dict[str, np.ndarray],
+    y: np.ndarray,
+    ab: np.ndarray,
+    rolling: list[dict[str, object]],
+    deployable: HazardModel,
+) -> None:
+    summary = {
+        "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "report": "docs/MODEL_REPORT.md",
+        "split": {
+            "train": f"events <= {TRAIN_END_YEAR}",
+            "test": f"events >= {TRAIN_END_YEAR + 1}",
+            "training_scope": "national",
+        },
+        "features": {"deployed": list(ALL_FEATURES), "weather_in_model": False},
+        "canada": region_summary(preds, y),
+        "alberta": region_summary({k: v[ab] for k, v in preds.items()}, y[ab]),
+        "rolling_origin": rolling,
+        "ablations": [
+            {
+                **r,
+                "delta": round(r["delta"], 3),
+                "lo": round(r["lo"], 3),
+                "hi": round(r["hi"], 3),
+            }
+            for r in ablation_rows(preds, y, ab)
+        ],
+        "calibration_above_threshold": high_confidence_calibration(preds[FULL], y),
+        "low_evidence_rule": "fewer than 3 prior incidents within 25 km",
+        "deployed_model": {
+            "trained_through": deployable.meta.get("trained_through"),
+            "n_train": deployable.meta.get("n_train"),
+            "rounds": deployable.meta.get("rounds"),
+        },
+    }
+    SUMMARY_PATH.write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
 
 def train_deployable(X: pd.DataFrame, y: pd.Series, years: pd.Series) -> HazardModel:
@@ -680,6 +776,7 @@ def main() -> None:
     yte = class_index(y[test_mask])
     ab_te = ab[test_mask].to_numpy()
     plot_calibration(preds, yte)
+    rolling_text, rolling = section_rolling(X, y, years, ab)
     body = [
         "# Flowline Hazard Forecast — Model Report",
         (
@@ -690,7 +787,7 @@ def main() -> None:
         conclusion(preds, yte, ab_te),
         section_data(df, X),
         split_text,
-        section_rolling(X, y, years, ab),
+        rolling_text,
         section_ablation(preds, yte, ab_te),
         section_failures(preds, yte, X[test_mask], ab_te),
         section_washout(preds, yte, X[test_mask], ab_te, df, years),
@@ -700,6 +797,8 @@ def main() -> None:
     REPORT_PATH.write_text("\n\n".join(body) + "\n", encoding="utf-8")
     print(f"wrote {REPORT_PATH.relative_to(ROOT)}")
     deployable = train_deployable(X, y, years)
+    write_summary(preds, yte, ab_te, rolling, deployable)
+    print(f"wrote {SUMMARY_PATH.relative_to(ROOT)}")
     print(
         f"saved deployable model ({deployable.meta['rounds']} rounds) to "
         f"{MODEL_PATH.relative_to(ROOT)}.*"

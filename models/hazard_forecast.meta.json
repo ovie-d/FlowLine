@@ -8,18 +8,6 @@
     "province",
     "operator_group",
     "commodity",
-    "temp_mean_d0",
-    "temp_min_d0",
-    "temp_max_d0",
-    "temp_mean_7d",
-    "temp_min_7d",
-    "temp_max_7d",
-    "temp_mean_30d",
-    "temp_min_30d",
-    "temp_max_30d",
-    "freeze_thaw_30d",
-    "precip_7d",
-    "precip_30d",
     "ah_n_prior",
     "ah_n_sites",
     "ah_n_known",
@@ -94,8 +82,8 @@
     "construction_material_defect",
     "fire_ignition"
   ],
-  "rounds": 67,
+  "rounds": 62,
   "n_train": 1937,
   "trained_through": "2026",
-  "trained_at": "2026-10-05T07:52:53+00:00"
+  "trained_at": "2026-10-05T16:08:41+00:00"
 }

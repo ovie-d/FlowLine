@@ -4,7 +4,9 @@ Allowed inputs (see docs/DATA_PROFILE.md §9 leakage check):
 - location: lat/lon, province, distance to the nearest CER pipeline system
 - context: operator group, commodity carried (CER systems layer)
 - time: day of year
-- weather: Phase 3 features (ECCC history, or Open-Meteo / overrides at inference)
+- weather: NOT in the deployed model (2026-10-05 decision: no measurable gain in the
+  ablation, docs/MODEL_REPORT.md). Kept as WEATHER_CANDIDATES for re-evaluation, and
+  as context in the database, similar-incident search and briefings.
 - area history: incidents strictly before the reference date within AREA_RADIUS_KM.
   Their hazard mix only uses incidents whose cause was known by then
   (closed before the reference date), weighted so each site counts once.
@@ -34,7 +36,7 @@ AREA_RADIUS_KM = 25.0
 # in summer, so its missingness tracks season and class (DATA_PROFILE §9, "caution"),
 # and live Open-Meteo data always fills it (train/serve skew).
 EXCLUDED_WEATHER: frozenset[str] = frozenset({"snow_on_ground_d0"})
-MODEL_WEATHER_FEATURES: tuple[str, ...] = tuple(
+WEATHER_CANDIDATES: tuple[str, ...] = tuple(
     f for f in WEATHER_FEATURES if f not in EXCLUDED_WEATHER
 )
 EPOCH = date(1970, 1, 1)
@@ -59,10 +61,12 @@ AREA_FEATURES: tuple[str, ...] = (
 FEATURE_GROUPS: dict[str, tuple[str, ...]] = {
     "location_time": LOCATION_TIME_FEATURES,
     "context": CATEGORICAL_FEATURES,
-    "weather": MODEL_WEATHER_FEATURES,
     "area_history": AREA_FEATURES,
 }
+# Deployed model features.
 ALL_FEATURES: tuple[str, ...] = tuple(f for g in FEATURE_GROUPS.values() for f in g)
+# Columns built for training/evaluation: deployed features + weather candidates.
+TRAINING_COLUMNS: tuple[str, ...] = (*ALL_FEATURES, *WEATHER_CANDIDATES)
 
 # Columns that must never reach the model (asserted in tests).
 FORBIDDEN_COLUMNS: frozenset[str] = frozenset(
@@ -189,7 +193,7 @@ def feature_row(
 
 
 def training_frame(incidents: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
-    """Features (ALL_FEATURES) and labels for every model-target incident.
+    """Features (TRAINING_COLUMNS) and labels for every model-target incident.
 
     `incidents` holds all incidents (history includes non-target classes) with
     weather columns joined. Each row's area history uses strictly earlier rows.
@@ -210,5 +214,5 @@ def training_frame(incidents: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
         )
         for r in target.itertuples()
     ]
-    X = pd.DataFrame(rows, index=target.index)[list(ALL_FEATURES)]
+    X = pd.DataFrame(rows, index=target.index)[list(TRAINING_COLUMNS)]
     return X, target["hazard_group"]

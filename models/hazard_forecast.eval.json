@@ -1,0 +1,265 @@
+{
+  "generated_at": "2026-10-05T16:08:41+00:00",
+  "report": "docs/MODEL_REPORT.md",
+  "split": {
+    "train": "events <= 2021",
+    "test": "events >= 2022",
+    "training_scope": "national"
+  },
+  "features": {
+    "deployed": [
+      "latitude",
+      "longitude",
+      "doy_sin",
+      "doy_cos",
+      "dist_pipeline_km",
+      "province",
+      "operator_group",
+      "commodity",
+      "ah_n_prior",
+      "ah_n_sites",
+      "ah_n_known",
+      "ah_n_known_sites",
+      "ah_same_site_n",
+      "ah_days_since_last",
+      "ah_mix_corrosion_cracking",
+      "ah_mix_equipment_failure",
+      "ah_mix_incorrect_operation",
+      "ah_mix_third_party_damage",
+      "ah_mix_geotechnical",
+      "ah_mix_natural_forces_weather",
+      "ah_mix_construction_material_defect",
+      "ah_mix_fire_ignition"
+    ],
+    "weather_in_model": false
+  },
+  "canada": {
+    "n_test": 430,
+    "model": {
+      "log_loss": [
+        1.794,
+        1.728,
+        1.864
+      ],
+      "brier": [
+        0.788,
+        0.768,
+        0.808
+      ],
+      "top1": [
+        0.363,
+        0.319,
+        0.409
+      ],
+      "top3": [
+        0.719,
+        0.674,
+        0.76
+      ]
+    },
+    "best_baseline": {
+      "name": "Baseline: province base rate",
+      "log_loss": [
+        1.948,
+        1.88,
+        2.019
+      ],
+      "brier": [
+        0.835,
+        0.819,
+        0.852
+      ],
+      "top1": [
+        0.223,
+        0.184,
+        0.26
+      ],
+      "top3": [
+        0.66,
+        0.612,
+        0.705
+      ]
+    },
+    "delta_log_loss_vs_best_baseline": [
+      -0.154,
+      -0.198,
+      -0.109
+    ],
+    "beats_best_baseline": true
+  },
+  "alberta": {
+    "n_test": 164,
+    "model": {
+      "log_loss": [
+        1.862,
+        1.749,
+        1.973
+      ],
+      "brier": [
+        0.806,
+        0.774,
+        0.835
+      ],
+      "top1": [
+        0.329,
+        0.262,
+        0.409
+      ],
+      "top3": [
+        0.652,
+        0.579,
+        0.732
+      ]
+    },
+    "best_baseline": {
+      "name": "Baseline: national base rate",
+      "log_loss": [
+        1.944,
+        1.839,
+        2.037
+      ],
+      "brier": [
+        0.83,
+        0.801,
+        0.855
+      ],
+      "top1": [
+        0.305,
+        0.238,
+        0.372
+      ],
+      "top3": [
+        0.567,
+        0.494,
+        0.64
+      ]
+    },
+    "delta_log_loss_vs_best_baseline": [
+      -0.081,
+      -0.139,
+      -0.022
+    ],
+    "beats_best_baseline": true
+  },
+  "rolling_origin": [
+    {
+      "year": 2020,
+      "n": 90,
+      "n_alberta": 39,
+      "model_log_loss": 2.041,
+      "national_base_log_loss": 2.204,
+      "delta_vs_national": [
+        -0.163,
+        -0.269,
+        -0.062
+      ]
+    },
+    {
+      "year": 2021,
+      "n": 135,
+      "n_alberta": 43,
+      "model_log_loss": 2.131,
+      "national_base_log_loss": 2.224,
+      "delta_vs_national": [
+        -0.093,
+        -0.169,
+        -0.026
+      ]
+    },
+    {
+      "year": 2022,
+      "n": 141,
+      "n_alberta": 52,
+      "model_log_loss": 1.795,
+      "national_base_log_loss": 1.996,
+      "delta_vs_national": [
+        -0.201,
+        -0.286,
+        -0.119
+      ]
+    },
+    {
+      "year": 2023,
+      "n": 132,
+      "n_alberta": 49,
+      "model_log_loss": 1.655,
+      "national_base_log_loss": 1.884,
+      "delta_vs_national": [
+        -0.229,
+        -0.313,
+        -0.143
+      ]
+    },
+    {
+      "year": 2024,
+      "n": 64,
+      "n_alberta": 27,
+      "model_log_loss": 1.992,
+      "national_base_log_loss": 2.02,
+      "delta_vs_national": [
+        -0.028,
+        -0.21,
+        0.171
+      ]
+    },
+    {
+      "year": 2025,
+      "n": 70,
+      "n_alberta": 29,
+      "model_log_loss": 1.682,
+      "national_base_log_loss": 1.788,
+      "delta_vs_national": [
+        -0.106,
+        -0.205,
+        -0.01
+      ]
+    }
+  ],
+  "ablations": [
+    {
+      "change": "add weather back",
+      "region": "Canada",
+      "delta": 0.003,
+      "lo": -0.022,
+      "hi": 0.029,
+      "verdict": "no measurable difference"
+    },
+    {
+      "change": "add weather back",
+      "region": "Alberta",
+      "delta": 0.005,
+      "lo": -0.034,
+      "hi": 0.043,
+      "verdict": "no measurable difference"
+    },
+    {
+      "change": "remove area history",
+      "region": "Canada",
+      "delta": -0.089,
+      "lo": -0.121,
+      "hi": -0.056,
+      "verdict": "area history helps"
+    },
+    {
+      "change": "remove area history",
+      "region": "Alberta",
+      "delta": -0.068,
+      "lo": -0.124,
+      "hi": -0.012,
+      "verdict": "area history helps"
+    }
+  ],
+  "calibration_above_threshold": {
+    "threshold": 0.5,
+    "n_forecasts_above": 4,
+    "mean_predicted": 0.565,
+    "observed_rate": 0.0,
+    "display_rule": "Probabilities above 50% are shown as '>50%, lower certainty'."
+  },
+  "low_evidence_rule": "fewer than 3 prior incidents within 25 km",
+  "deployed_model": {
+    "trained_through": "2026",
+    "n_train": 1937,
+    "rounds": 62
+  }
+}
