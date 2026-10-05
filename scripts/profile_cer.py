@@ -12,9 +12,13 @@ from pathlib import Path
 
 import pandas as pd
 
+from core.leakage import CAUTION_V, LEAK_V, leakage_row
+from core.operators import UNKNOWN, commodity_carried, operator_group
 from core.taxonomy import (
     HAZARD_GROUPS,
     HAZARD_LABELS,
+    LOW_EVIDENCE_GROUPS,
+    MODEL_TARGETS,
     UNDETERMINED,
     all_hazards,
     assign_hazard_groups,
@@ -463,13 +467,15 @@ def group_counts(df: pd.DataFrame) -> list[list[object]]:
     year = df["event_date"].dt.year
     ab = df["is_alberta"]
     rows = []
-    for g in (*HAZARD_GROUPS, UNDETERMINED):
+    for g in HAZARD_GROUPS:
         m = df["hazard_group"].eq(g)
         nat, ab_n = int(m.sum()), int((m & ab).sum())
         ab_tr = int((m & ab & (year <= TRAIN_END_YEAR)).sum())
         ab_te = int((m & ab & (year > TRAIN_END_YEAR)).sum())
         flags = []
-        if g != UNDETERMINED:
+        if g in LOW_EVIDENCE_GROUPS:
+            flags.append("low-evidence (flagged in UI)")
+        if g in MODEL_TARGETS:
             if nat < SPARSE_NATIONAL:
                 flags.append(f"<{SPARSE_NATIONAL} national")
             if ab_tr < SPARSE_ALBERTA_TRAIN:
@@ -477,7 +483,7 @@ def group_counts(df: pd.DataFrame) -> list[list[object]]:
             if ab_te < SPARSE_ALBERTA_TEST:
                 flags.append(f"<{SPARSE_ALBERTA_TEST} AB test")
         else:
-            flags.append("excluded from modelling")
+            flags.append("not a forecast target (evidence only)")
         rows.append(
             [
                 HAZARD_LABELS[g],
@@ -501,7 +507,7 @@ def section_proposed_taxonomy(df: pd.DataFrame) -> str:
     from_fallback = df["Detailed what happened"].isna()
     return "\n\n".join(
         [
-            "## 8. Proposed Flowline hazard taxonomy (draft — needs approval)",
+            "## 8. Flowline hazard taxonomy (approved 2026-10-05)",
             (
                 "Built from `Detailed what happened` codes, because the CER top-level "
                 "`External Interference` category (807 mentions) is mostly *not* third-party "
@@ -513,6 +519,16 @@ def section_proposed_taxonomy(df: pd.DataFrame) -> str:
                 f"category ({int(from_fallback.sum())} rows). Incidents whose codes span more than "
                 f"one group: **{int(multi.sum())}** ({pct(multi.mean())}) — the primary group is "
                 "kept, the full list is stored for display."
+            ),
+            (
+                "Approved decisions: Corrosion and Cracking merged; ground movement and "
+                "washout combined (slope / frost heave / subsidence alone is ~50 cases); fire "
+                "comes only from the *Fire and explosion hazards* cause code (the *Fire* "
+                "incident type is an outcome); *Frozen components* = weather; *Defective "
+                "tools* = equipment failure. **Other / unknown** and **Undetermined** stay in "
+                "the database and the evidence panel but are **not forecast targets**. "
+                "Third-party damage stays its own group (distinct crew) and is flagged "
+                "low-evidence."
             ),
             "### Group counts",
             md_table(
@@ -542,6 +558,142 @@ def section_proposed_taxonomy(df: pd.DataFrame) -> str:
     )
 
 
+# Candidate forecast features: (label, how to build it, available at forecast time?)
+# "Available" = derivable from lat/lon + date + an independent source or user input.
+CANDIDATE_FEATURES: tuple[tuple[str, str, str], ...] = (
+    ("Latitude (binned)", "Latitude", "yes — map click"),
+    ("Longitude (binned)", "Longitude", "yes — map click"),
+    ("Province", "Province", "yes — from lat/lon"),
+    ("Month of event", "_month", "yes — forecast date"),
+    (
+        "Occurrence date present (else discovered date)",
+        "_occurred",
+        "n/a — data quality",
+    ),
+    ("Operator group", "_operator", "yes — nearest system / user"),
+    ("Commodity carried (CER systems layer)", "_commodity", "yes — systems layer"),
+    ("Substance carried (incident record)", "Substance carried", "no"),
+    ("Pipeline or Facility Type (incident record)", "Pipeline or Facility Type", "no"),
+    ("Facility Name", "Facility Name", "no"),
+    ("Facility Type", "Facility Type", "no"),
+    ("Facility latitude", "Facility latitude", "no"),
+    ("Pipeline Name", "Pipeline Name", "no"),
+    ("Kilometre post", "Kilometre post", "no"),
+    ("Pipeline outside diameter (NPS)", "Pipeline outside diameter (NPS)", "no"),
+    ("Regulation (OPR / PPR)", "Regulation", "partly — by operator"),
+    ("Land Use", "Land Use", "only via land-cover layer"),
+    ("Population Density", "Population Density", "only via census layer"),
+)
+
+
+def candidate_values(df: pd.DataFrame, source: str) -> pd.Series:
+    """Feature values with placeholders as NaN; numeric columns binned."""
+    if source == "_month":
+        return df["event_date"].dt.month.astype("float")
+    if source == "_occurred":
+        return df["occurred"].dt.month.astype("float")
+    if source == "_operator":
+        return df["Company"].map(operator_group)
+    if source == "_commodity":
+        return df["Company"].map(commodity_carried).replace(UNKNOWN, pd.NA)
+    s = df[source]
+    if pd.api.types.is_numeric_dtype(s) and s.nunique() > 20:
+        return pd.qcut(s, 10, duplicates="drop").astype("string")
+    s = s.astype("string").str.strip()
+    return s.mask(s.str.match(PLACEHOLDER_RE) | s.eq(""))
+
+
+def feature_decision(verdict: str, available: str) -> str:
+    if available.startswith("n/a"):
+        return "never a feature (see note)"
+    if verdict.startswith("LEAKS"):
+        return "**exclude**"
+    if available.startswith("no"):
+        return "exclude (not known at forecast time)"
+    if available.startswith(("only via", "partly")):
+        return "only if joined from that source"
+    return "candidate" + (" (watch)" if verdict == "caution" else "")
+
+
+def section_leakage(df: pd.DataFrame) -> str:
+    model = df[df["hazard_group"].isin(MODEL_TARGETS)]
+    y = model["hazard_group"]
+    rows = []
+    for label, source, available in CANDIDATE_FEATURES:
+        r = leakage_row(candidate_values(model, source), y)
+        rows.append(
+            [
+                label,
+                pct(r["missing"]),
+                f"{pct(r['missing_min'])} – {pct(r['missing_max'])}",
+                HAZARD_LABELS.get(r["missing_max_class"], "—")
+                if r["missing"] > 0
+                else "—",
+                r["missing_v"],
+                r["value_v"],
+                r["verdict"],
+                available,
+                feature_decision(str(r["verdict"]), available),
+            ]
+        )
+    header = [
+        "candidate feature",
+        "% missing",
+        "missing range across classes",
+        "most-missing class",
+        "V(missing, class)",
+        "V(value, class)",
+        "leakage verdict",
+        "available at forecast time",
+        "decision",
+    ]
+    return "\n\n".join(
+        [
+            "## 9. Leakage check — every candidate feature",
+            (
+                f"Rows: the {len(model):,} incidents whose hazard group is a forecast "
+                "target. `V(missing, class)` is bias-corrected Cramér's V between the "
+                "feature's missing-indicator and the hazard class: if *whether a field is "
+                "filled* depends on what went wrong, the field was recorded because of the "
+                f"outcome. Verdict: ≥ {LEAK_V} = leaks, ≥ {CAUTION_V} = caution. "
+                "`V(value, class)` is the association of the filled values with the class "
+                "(signal, or leakage if the field is post-event). Placeholders (*Not "
+                "Applicable*, *Unknown*…) count as missing; numeric columns are binned "
+                "into deciles."
+            ),
+            md_table(rows, header),
+            (
+                "**Commodity carried** is derived from the incident's operator via the CER "
+                "Pipeline Systems layer (`data/cer_pipeline_systems.csv`, "
+                "`core/operators.py`), not from any release field. Where the incident's own "
+                "*Substance carried* is filled, the two agree on gas vs liquid in all but "
+                "one row. Its missingness is low and not class-dependent; it is a candidate "
+                "feature."
+            ),
+            (
+                "**Facility vs pipeline:** every facility indicator in the incident record "
+                "(*Facility Name*, *Facility Type*, *Pipeline or Facility Type*, *Pipeline "
+                "Name*) is filled conditional on the cause, so none may be a feature. At "
+                "forecast time a facility/line-pipe choice can only come from user input "
+                "or an independent facility list; it is not trained from these columns."
+            ),
+            (
+                "**Event date source:** the occurrence date is missing for most "
+                "geotechnical incidents (washouts are *discovered*, not seen happening), so "
+                "their event date is the discovery date. Weather windows are anchored on "
+                "`event_date` for every incident; the date-source flag itself is never a "
+                "feature, because it alone would reveal the class. Consequence for "
+                'interpretation: for washouts, "prior 7/30 days" means before discovery.'
+            ),
+            (
+                "**Weather (Phase 3), distance to pipeline and area history (Phase 6)** are "
+                "computed from independent sources; their missingness vs class is checked "
+                "in `docs/MODEL_REPORT.md` once built."
+            ),
+        ]
+    )
+
+
 def build_report(raw: pd.DataFrame, dd: pd.DataFrame) -> str:
     df = add_derived(raw)
     header = (
@@ -560,6 +712,7 @@ def build_report(raw: pd.DataFrame, dd: pd.DataFrame) -> str:
         section_cer_taxonomy(raw),
         section_coordinates(df),
         section_proposed_taxonomy(df),
+        section_leakage(df),
     ]
     return "\n\n".join(sections) + "\n"
 

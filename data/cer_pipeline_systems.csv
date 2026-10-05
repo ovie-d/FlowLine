@@ -1,0 +1,29 @@
+pipeline_name,company,commodity
+Alliance Pipeline,Alliance Pipeline Ltd.,Gas
+Aurora Pipeline,Aurora Pipe Line Company Ltd.,Liquid
+Brunswick Pipeline,Emera Brunswick Pipeline Company Ltd.,Gas
+Cochin Pipeline,PKM Cochin ULC,Liquid
+Enbridge BC Pipeline,Westcoast Energy Inc.,Gas
+Enbridge Bakken System,"Enbridge Bakken Pipeline Company Inc., on behalf of Enbridge Bakken Pipeline Limited Partnership",Liquid
+Enbridge Canadian Mainline,Enbridge Pipelines Inc.,Liquid
+Enbridge Line 11,Enbridge Pipelines Inc.,Liquid
+Enbridge Line 7,Enbridge Pipelines Inc.,Liquid
+Enbridge Line 9,Enbridge Pipelines Inc.,Liquid
+Express Pipeline,Express Pipeline Ltd.,Liquid
+Foothills System,Foothills Pipe Lines Ltd.,Gas
+Genesis Pipeline,Genesis Pipeline Canada Ltd.,Liquid
+Keystone Pipeline,South Bow GP (Canada) Ltd.,Liquid
+M&NP Pipeline,Maritimes & Northeast Pipeline Management Ltd.,Gas
+Many Islands Pipeline,Many Islands Pipe Lines (Canada) Limited,Gas
+Milk River Pipeline,Milk River Pipeline Ltd.,Liquid
+Montreal Pipeline,Montreal Pipe Line Limited,Liquid
+NGTL System,NOVA Gas Transmission Ltd.,Gas
+Norman Wells Pipeline,Enbridge Pipelines (NW) Inc.,Liquid
+Southern Lights Pipeline,Enbridge Southern Lights GP Inc. on behalf of Enbridge Southern Lights LP,Liquid
+TC Canadian Mainline,TransCanada PipeLines Limited,Gas
+TQM Pipeline,Trans Québec and Maritimes Pipeline Inc.,Gas
+Trans Mountain Pipeline,Trans Mountain Pipeline ULC,Liquid
+Trans-Northern Pipeline,Trans-Northern Pipelines Inc.,Liquid
+Vector Pipeline,Vector Pipeline Limited Partnership,Gas
+Wascana Pipeline,Plains Midstream Canada ULC,Liquid
+Westspur Pipeline,Kingston Midstream Westspur Limited,Liquid

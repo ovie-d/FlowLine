@@ -213,8 +213,7 @@ Impact on the plan: Phase 5 (narrative embeddings) has no narrative to embed. Em
 
 | hazard group | n | Material filled | Install year filled | Pipeline/Facility type filled |
 |---|---|---|---|---|
-| Corrosion (external / internal) | 66 | 53.0% | 33.3% | 72.7% |
-| Cracking (fatigue, SCC) | 158 | 43.7% | 18.4% | 55.1% |
+| Corrosion & cracking | 224 | 46.4% | 22.8% | 60.3% |
 | Equipment & component failure | 523 | 15.1% | 7.1% | 54.3% |
 | Incorrect operation / procedures | 449 | 12.0% | 5.1% | 75.9% |
 | Third-party & mechanical damage | 68 | 29.4% | 8.8% | 89.7% |
@@ -223,6 +222,7 @@ Impact on the plan: Phase 5 (narrative embeddings) has no narrative to embed. Em
 | Construction & material defects | 172 | 15.7% | 11.0% | 25.6% |
 | Fire / ignition hazard | 111 | 3.6% | 0.9% | 76.6% |
 | Other / unknown | 66 | 10.6% | 3.0% | 50.0% |
+| Undetermined (under investigation) | 0 | nan% | nan% | nan% |
 
 Pipe attributes are recorded mainly when the pipe body failed. Using them — or their missingness — as forecast features would leak the answer. They can only be used if we join them from an **independent asset source** (e.g. the CER pipeline systems layer), not from the incident record.
 
@@ -335,25 +335,26 @@ Category columns are **multi-valued** (comma-separated). Counts below are per me
 
 Many rows share exact coordinates (facilities such as compressor stations report the station location), so area-history features will cluster strongly.
 
-## 8. Proposed Flowline hazard taxonomy (draft — needs approval)
+## 8. Flowline hazard taxonomy (approved 2026-10-05)
 
-Built from `Detailed what happened` codes, because the CER top-level `External Interference` category (807 mentions) is mostly *not* third-party damage — it also holds fire hazards, floods, defective tools and planning failures. Rule per incident: **tier 1** physical damage mechanism › **tier 2** specific condition (weather, fire/explosion hazard, defective tools) › **tier 3** human acts / other substandard conditions › **tier 4** unknown; first-listed code wins within a tier. Rows with no detailed code fall back to the top-level category (31 rows). Incidents whose codes span more than one group: **490** (24.1%) — the primary group is kept, the full list is stored for display.
+Built from `Detailed what happened` codes, because the CER top-level `External Interference` category (807 mentions) is mostly *not* third-party damage — it also holds fire hazards, floods, defective tools and planning failures. Rule per incident: **tier 1** physical damage mechanism › **tier 2** specific condition (weather, fire/explosion hazard, defective tools) › **tier 3** human acts / other substandard conditions › **tier 4** unknown; first-listed code wins within a tier. Rows with no detailed code fall back to the top-level category (31 rows). Incidents whose codes span more than one group: **482** (23.7%) — the primary group is kept, the full list is stored for display.
+
+Approved decisions: Corrosion and Cracking merged; ground movement and washout combined (slope / frost heave / subsidence alone is ~50 cases); fire comes only from the *Fire and explosion hazards* cause code (the *Fire* incident type is an outcome); *Frozen components* = weather; *Defective tools* = equipment failure. **Other / unknown** and **Undetermined** stay in the database and the evidence panel but are **not forecast targets**. Third-party damage stays its own group (distinct crew) and is flagged low-evidence.
 
 ### Group counts
 
 | hazard group | key | national | share | Alberta | AB share | AB train ≤2021 | AB test ≥2022 | flags |
 |---|---|---|---|---|---|---|---|---|
-| Corrosion (external / internal) | `corrosion` | 66 | 3.2% | 37 | 5.2% | 36 | 1 | <100 national, <10 AB test |
-| Cracking (fatigue, SCC) | `cracking` | 158 | 7.8% | 54 | 7.6% | 45 | 9 | <10 AB test |
+| Corrosion & cracking | `corrosion_cracking` | 224 | 11.0% | 91 | 12.8% | 81 | 10 | ok |
 | Equipment & component failure | `equipment_failure` | 523 | 25.7% | 189 | 26.5% | 139 | 50 | ok |
 | Incorrect operation / procedures | `incorrect_operation` | 449 | 22.1% | 135 | 18.9% | 102 | 33 | ok |
-| Third-party & mechanical damage | `third_party_damage` | 68 | 3.3% | 28 | 3.9% | 15 | 13 | <100 national, <30 AB train |
+| Third-party & mechanical damage | `third_party_damage` | 68 | 3.3% | 28 | 3.9% | 15 | 13 | low-evidence (flagged in UI), <100 national, <30 AB train |
 | Ground movement, washout & geotechnical | `geotechnical` | 257 | 12.6% | 78 | 10.9% | 42 | 36 | ok |
 | Natural forces & weather | `natural_forces_weather` | 133 | 6.5% | 38 | 5.3% | 27 | 11 | <30 AB train |
 | Construction & material defects | `construction_material_defect` | 172 | 8.5% | 55 | 7.7% | 52 | 3 | <10 AB test |
 | Fire / ignition hazard | `fire_ignition` | 111 | 5.5% | 44 | 6.2% | 36 | 8 | <10 AB test |
-| Other / unknown | `other_unknown` | 66 | 3.2% | 45 | 6.3% | 44 | 1 | <100 national, <10 AB test |
-| Undetermined (under investigation) | `undetermined` | 31 | 1.5% | 10 | 1.4% | 4 | 6 | excluded from modelling |
+| Other / unknown | `other_unknown` | 66 | 3.2% | 45 | 6.3% | 44 | 1 | not a forecast target (evidence only) |
+| Undetermined (under investigation) | `undetermined` | 31 | 1.5% | 10 | 1.4% | 4 | 6 | not a forecast target (evidence only) |
 
 ### Mapping: CER detailed code → hazard group
 
@@ -377,18 +378,18 @@ Built from `Detailed what happened` codes, because the CER top-level `External I
 | Construction & material defects | 1 | DDM › Structural Degradation › Other Chemical Degradation | 2 |
 | Construction & material defects | 1 | DDM › Structural Degradation › Weeping | 2 |
 | Construction & material defects | 1 | DDM › Construction › Wrinkle or Buckle | 1 |
-| Corrosion (external / internal) | 1 | DDM › Material Loss › External Material Loss › Poor Condition of External Coating | 39 |
-| Corrosion (external / internal) | 1 | DDM › Material Loss › Internal Material Loss | 22 |
-| Corrosion (external / internal) | 1 | DDM › Material Loss › External Material Loss | 17 |
-| Corrosion (external / internal) | 1 | DDM › Material Loss › External Material Loss › Poor Performance of Cathodic Protection System | 5 |
-| Corrosion (external / internal) | 1 | DDM › Material Loss › External Material Loss › External Metal Loss on Uncoated Pipe | 2 |
-| Cracking (fatigue, SCC) | 1 | DDM › Cracking › Fatigue | 84 |
-| Cracking (fatigue, SCC) | 1 | DDM › Cracking › Corrosion Fatigue | 33 |
-| Cracking (fatigue, SCC) | 1 | DDM › Cracking › Stress Corrosion Cracking | 18 |
-| Cracking (fatigue, SCC) | 1 | DDM › Cracking › Mechanical Damage Delayed Cracking | 13 |
-| Cracking (fatigue, SCC) | 1 | DDM › Structural Degradation › Corrosion Fatigue | 8 |
-| Cracking (fatigue, SCC) | 1 | DDM › Cracking › Hydrogen-induced Cracking | 3 |
-| Cracking (fatigue, SCC) | 1 | DDM › Cracking › Sulphide Stress Cracking | 1 |
+| Corrosion & cracking | 1 | DDM › Cracking › Fatigue | 84 |
+| Corrosion & cracking | 1 | DDM › Material Loss › External Material Loss › Poor Condition of External Coating | 39 |
+| Corrosion & cracking | 1 | DDM › Cracking › Corrosion Fatigue | 33 |
+| Corrosion & cracking | 1 | DDM › Material Loss › Internal Material Loss | 22 |
+| Corrosion & cracking | 1 | DDM › Cracking › Stress Corrosion Cracking | 18 |
+| Corrosion & cracking | 1 | DDM › Material Loss › External Material Loss | 17 |
+| Corrosion & cracking | 1 | DDM › Cracking › Mechanical Damage Delayed Cracking | 13 |
+| Corrosion & cracking | 1 | DDM › Structural Degradation › Corrosion Fatigue | 8 |
+| Corrosion & cracking | 1 | DDM › Material Loss › External Material Loss › Poor Performance of Cathodic Protection System | 5 |
+| Corrosion & cracking | 1 | DDM › Cracking › Hydrogen-induced Cracking | 3 |
+| Corrosion & cracking | 1 | DDM › Material Loss › External Material Loss › External Metal Loss on Uncoated Pipe | 2 |
+| Corrosion & cracking | 1 | DDM › Cracking › Sulphide Stress Cracking | 1 |
 | Equipment & component failure | 1 | DDM › Equipment › Valve Seals or Packing | 163 |
 | Equipment & component failure | 2 | Substandard Conditions › Defective tools › equipment or materials | 149 |
 | Equipment & component failure | 1 | DDM › Other Causes › Control System Malfunction | 110 |
@@ -457,3 +458,36 @@ Built from `Detailed what happened` codes, because the CER top-level `External I
 | Third-party & mechanical damage | 1 | DDM › External Interference › Unknown | 11 |
 | Third-party & mechanical damage | 1 | DDM › External Interference › Company Employee | 6 |
 | Third-party & mechanical damage | 1 | DDM › External Interference › Vandalism | 5 |
+
+## 9. Leakage check — every candidate feature
+
+Rows: the 1,937 incidents whose hazard group is a forecast target. `V(missing, class)` is bias-corrected Cramér's V between the feature's missing-indicator and the hazard class: if *whether a field is filled* depends on what went wrong, the field was recorded because of the outcome. Verdict: ≥ 0.2 = leaks, ≥ 0.1 = caution. `V(value, class)` is the association of the filled values with the class (signal, or leakage if the field is post-event). Placeholders (*Not Applicable*, *Unknown*…) count as missing; numeric columns are binned into deciles.
+
+| candidate feature | % missing | missing range across classes | most-missing class | V(missing, class) | V(value, class) | leakage verdict | available at forecast time | decision |
+|---|---|---|---|---|---|---|---|---|
+| Latitude (binned) | 0.0% | 0.0% – 0.0% | — | 0.0 | 0.105 | ok (always filled) | yes — map click | candidate |
+| Longitude (binned) | 0.0% | 0.0% – 0.0% | — | 0.0 | 0.129 | ok (always filled) | yes — map click | candidate |
+| Province | 0.0% | 0.0% – 0.0% | — | 0.0 | 0.149 | ok (always filled) | yes — from lat/lon | candidate |
+| Month of event | 0.0% | 0.0% – 0.0% | — | 0.0 | 0.09 | ok (always filled) | yes — forecast date | candidate |
+| Occurrence date present (else discovered date) | 25.3% | 4.5% – 78.2% | Ground movement, washout & geotechnical | 0.523 | 0.09 | LEAKS via missingness | n/a — data quality | never a feature (see note) |
+| Operator group | 0.0% | 0.0% – 0.0% | — | 0.0 | 0.21 | ok (always filled) | yes — nearest system / user | candidate |
+| Commodity carried (CER systems layer) | 3.4% | 0.9% – 4.5% | Natural forces & weather | 0.0 | 0.349 | ok | yes — systems layer | candidate |
+| Substance carried (incident record) | 43.5% | 16.0% – 67.4% | Construction & material defects | 0.284 | 0.188 | LEAKS via missingness | no | **exclude** |
+| Pipeline or Facility Type (incident record) | 31.9% | 1.9% – 74.4% | Construction & material defects | 0.426 | 0.11 | LEAKS via missingness | no | **exclude** |
+| Facility Name | 75.9% | 60.3% – 95.3% | Ground movement, washout & geotechnical | 0.217 | 0.331 | LEAKS via missingness | no | **exclude** |
+| Facility Type | 92.8% | 91.0% – 98.8% | Construction & material defects | 0.058 | 0.284 | ok | no | exclude (not known at forecast time) |
+| Facility latitude | 78.8% | 63.2% – 95.7% | Ground movement, washout & geotechnical | 0.204 | 0.14 | LEAKS via missingness | no | **exclude** |
+| Pipeline Name | 25.0% | 10.1% – 33.9% | Corrosion & cracking | 0.159 | 0.332 | caution | no | exclude (not known at forecast time) |
+| Kilometre post | 56.3% | 30.0% – 68.5% | Equipment & component failure | 0.246 | 0.185 | LEAKS via missingness | no | **exclude** |
+| Pipeline outside diameter (NPS) | 45.0% | 19.1% – 67.4% | Construction & material defects | 0.265 | 0.285 | LEAKS via missingness | no | **exclude** |
+| Regulation (OPR / PPR) | 20.8% | 2.9% – 35.4% | Ground movement, washout & geotechnical | 0.211 | 0.086 | LEAKS via missingness | partly — by operator | **exclude** |
+| Land Use | 0.0% | 0.0% – 0.0% | — | 0.0 | 0.255 | ok (always filled) | only via land-cover layer | only if joined from that source |
+| Population Density | 0.0% | 0.0% – 0.0% | — | 0.0 | 0.159 | ok (always filled) | only via census layer | only if joined from that source |
+
+**Commodity carried** is derived from the incident's operator via the CER Pipeline Systems layer (`data/cer_pipeline_systems.csv`, `core/operators.py`), not from any release field. Where the incident's own *Substance carried* is filled, the two agree on gas vs liquid in all but one row. Its missingness is low and not class-dependent; it is a candidate feature.
+
+**Facility vs pipeline:** every facility indicator in the incident record (*Facility Name*, *Facility Type*, *Pipeline or Facility Type*, *Pipeline Name*) is filled conditional on the cause, so none may be a feature. At forecast time a facility/line-pipe choice can only come from user input or an independent facility list; it is not trained from these columns.
+
+**Event date source:** the occurrence date is missing for most geotechnical incidents (washouts are *discovered*, not seen happening), so their event date is the discovery date. Weather windows are anchored on `event_date` for every incident; the date-source flag itself is never a feature, because it alone would reveal the class. Consequence for interpretation: for washouts, "prior 7/30 days" means before discovery.
+
+**Weather (Phase 3), distance to pipeline and area history (Phase 6)** are computed from independent sources; their missingness vs class is checked in `docs/MODEL_REPORT.md` once built.
