@@ -21,5 +21,22 @@ services:
       timeout: 5s
       retries: 20
 
+  osrm:
+    # Needs one-time preprocessing: scripts/build_osrm.sh (or .ps1) -> ./osrm/
+    build: ./docker/osrm
+    image: flowline-osrm:v26.10.0
+    restart: unless-stopped
+    command: osrm-routed --algorithm mld --max-table-size 1000 /data/alberta-latest.osrm
+    volumes:
+      - ./osrm:/data:ro
+    ports:
+      - "127.0.0.1:${OSRM_PORT:-5000}:5000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS 'http://localhost:5000/nearest/v1/driving/-113.49,53.55' >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
 volumes:
   pgdata:
