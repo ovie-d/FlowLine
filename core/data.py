@@ -12,6 +12,7 @@ import pandas as pd
 
 from core.config import RiskConfig
 from core.db import INCIDENT_COLUMNS, db_path
+from core.pg import try_connect
 
 DATA_PATH = (
     Path(__file__).resolve().parent.parent
@@ -241,8 +242,48 @@ def _read_raw_from_db(path: Path) -> pd.DataFrame | None:
     return raw
 
 
+def _pg_ranking_stamp() -> str | None:
+    """'count:max(loaded_at)' of Postgres ranking_incidents, or None if unusable."""
+    conn = try_connect()
+    if conn is None:
+        return None
+    try:
+        with conn:
+            row = conn.execute(
+                "SELECT count(*) AS n, max(loaded_at) AS ts FROM ranking_incidents"
+            ).fetchone()
+    except Exception:  # noqa: BLE001 — missing table / server error -> other sources
+        return None
+    if not row or not row["n"]:
+        return None
+    return f"{row['n']}:{row['ts']}"
+
+
+def _read_raw_from_pg() -> pd.DataFrame | None:
+    conn = try_connect()
+    if conn is None:
+        return None
+    cols = ", ".join(INCIDENT_COLUMNS)
+    try:
+        with conn:
+            rows = conn.execute(
+                f"SELECT {cols} FROM ranking_incidents ORDER BY id"
+            ).fetchall()
+    except Exception:  # noqa: BLE001
+        return None
+    if not rows:
+        return None
+    raw = pd.DataFrame(rows, columns=list(INCIDENT_COLUMNS))
+    raw["date"] = pd.to_datetime(raw["date"])
+    return raw
+
+
 def _read_raw_incidents() -> tuple[pd.DataFrame, str]:
-    """Prefer SQLite when DB_PATH exists and has rows; else CSV."""
+    """Prefer Postgres (DATABASE_URL), then SQLite (DB_PATH), else CSV."""
+    if _pg_ranking_stamp() is not None:
+        raw = _read_raw_from_pg()
+        if raw is not None:
+            return raw, "postgres:ranking_incidents"
     db = db_path()
     raw = _read_raw_from_db(db)
     if raw is not None:
@@ -252,6 +293,9 @@ def _read_raw_incidents() -> tuple[pd.DataFrame, str]:
 
 def _incident_source_key() -> str:
     """Cache key so switching DB_PATH / reloading seed invalidates cleanly."""
+    stamp = _pg_ranking_stamp()
+    if stamp is not None:
+        return f"postgres:{stamp}"
     db = db_path()
     raw = _read_raw_from_db(db)
     if raw is not None:

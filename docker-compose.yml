@@ -1,0 +1,25 @@
+# Flowline local services. Credentials come from .env (defaults are dev-only).
+name: flowline
+
+services:
+  db:
+    build: ./docker/db
+    image: flowline-db:18-3.6-pgvector
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-flowline}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-flowline}
+      POSTGRES_DB: ${POSTGRES_DB:-flowline}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # PostgreSQL 18+ images keep data under /var/lib/postgresql/<major>/docker.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  pgdata:
