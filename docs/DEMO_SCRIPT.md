@@ -44,6 +44,12 @@ Switch to **Pick date**:
 > "The mix shifts with the time of year — learned from history. Above 50% we deliberately
 > say *lower certainty*: on held-out data the model was overconfident there."
 
+**On the July bar, say the label out loud:**
+> "Notice it says *more than 50%, lower certainty* — not a confident number. Summer
+> ground movement around Edson is consistent with what you'll see on the washout card in a
+> minute — but that card is an observed pattern in the records, not something the model
+> forecasts, so we keep the two separate."
+
 Switch back to **Next 7 days**.
 
 ## 2:10 — Similar past incidents (25 s)
