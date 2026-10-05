@@ -133,11 +133,20 @@ LIMIT %(k)s
 """
 
 
+PLACEHOLDER_PLACES = frozenset({"", "not specified", "n/a", "unknown"})
+
+
+def place_name(nearest_centre: str | None, province: str) -> str:
+    """Nearest populated centre, or the province when the CER record has none."""
+    name = (nearest_centre or "").strip()
+    return province if name.lower() in PLACEHOLDER_PLACES else name
+
+
 def _row_out(row: dict[str, Any]) -> dict[str, Any]:
     return {
         "incident_number": row["incident_number"],
         "date": row["event_date"].isoformat(),
-        "place": (row["nearest_centre"] or "").strip() or row["province"],
+        "place": place_name(row["nearest_centre"], row["province"]),
         "province": row["province"],
         "latitude": float(row["latitude"]),
         "longitude": float(row["longitude"]),

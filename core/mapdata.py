@@ -7,6 +7,7 @@ from typing import Any
 
 import psycopg
 
+from core.similar import place_name
 from core.taxonomy import HAZARD_LABELS
 
 
@@ -38,7 +39,7 @@ def incident_points(conn: psycopg.Connection) -> dict[str, Any]:
                     "date": r["event_date"].isoformat(),
                     "hazard_group": r["hazard_group"],
                     "hazard_label": HAZARD_LABELS[r["hazard_group"]],
-                    "place": (r["nearest_centre"] or "").strip() or r["province"],
+                    "place": place_name(r["nearest_centre"], r["province"]),
                 },
             }
             for r in rows

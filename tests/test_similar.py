@@ -61,6 +61,14 @@ def test_missing_weather_uses_fallback_and_is_flagged() -> None:
     assert vec[6:9] == vec_full[6:9]  # the three missing values took the fallback
 
 
+def test_placeholder_place_falls_back_to_province() -> None:
+    from core.similar import place_name
+
+    assert place_name("Not specified", "Alberta") == "Alberta"
+    assert place_name("  ", "Ontario") == "Ontario"
+    assert place_name("Edson, AB", "Alberta") == "Edson, AB"
+
+
 def test_similarity_is_monotonic_in_distance() -> None:
     assert similarity_from_distance(0.0) == 1.0
     assert similarity_from_distance(1.0) > similarity_from_distance(2.0)
