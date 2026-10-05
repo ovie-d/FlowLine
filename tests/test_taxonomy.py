@@ -7,14 +7,15 @@ import pytest
 
 from core.taxonomy import (
     CONSTRUCTION_MATERIAL,
-    CORROSION,
-    CRACKING,
+    CORROSION_CRACKING,
     EQUIPMENT,
     FIRE_IGNITION,
     GEOTECHNICAL,
     HAZARD_GROUPS,
     HAZARD_LABELS,
     INCORRECT_OPERATION,
+    LOW_EVIDENCE_GROUPS,
+    MODEL_TARGETS,
     OTHER,
     THIRD_PARTY,
     UNDETERMINED,
@@ -31,10 +32,10 @@ DDM = "Damage or deterioration mechanism, "
 @pytest.mark.parametrize(
     ("code", "group"),
     [
-        (DDM + "Material Loss, External Material Loss", CORROSION),
-        (DDM + "Material Loss, Internal Material Loss", CORROSION),
-        (DDM + "Cracking, Stress Corrosion Cracking", CRACKING),
-        (DDM + "Structural Degradation, Corrosion Fatigue", CRACKING),
+        (DDM + "Material Loss, External Material Loss", CORROSION_CRACKING),
+        (DDM + "Material Loss, Internal Material Loss", CORROSION_CRACKING),
+        (DDM + "Cracking, Stress Corrosion Cracking", CORROSION_CRACKING),
+        (DDM + "Structural Degradation, Corrosion Fatigue", CORROSION_CRACKING),
         (DDM + "Equipment, Valve Seals or Packing", EQUIPMENT),
         (DDM + "Other Causes, Control System Malfunction", EQUIPMENT),
         (DDM + "Electrical Power System Failure, Arc Flash", EQUIPMENT),
@@ -74,7 +75,7 @@ def test_physical_mechanism_beats_human_act_regardless_of_order() -> None:
         + DDM
         + "Material Loss, External Material Loss"
     )
-    assert primary_hazard(detailed, "Corrosion and Cracking") == CORROSION
+    assert primary_hazard(detailed, "Corrosion and Cracking") == CORROSION_CRACKING
 
 
 def test_weather_condition_beats_human_act() -> None:
@@ -123,9 +124,20 @@ def test_assign_hazard_groups_aligns_with_index() -> None:
         index=[10, 20],
     )
     out = assign_hazard_groups(df)
-    assert out.to_dict() == {10: CRACKING, 20: GEOTECHNICAL}
+    assert out.to_dict() == {10: CORROSION_CRACKING, 20: GEOTECHNICAL}
 
 
 def test_every_group_has_a_label() -> None:
-    assert set(HAZARD_GROUPS) | {UNDETERMINED} == set(HAZARD_LABELS)
-    assert 8 <= len(HAZARD_GROUPS) <= 10
+    assert set(HAZARD_GROUPS) == set(HAZARD_LABELS)
+
+
+def test_model_targets_exclude_other_and_undetermined() -> None:
+    assert OTHER not in MODEL_TARGETS
+    assert UNDETERMINED not in MODEL_TARGETS
+    assert len(MODEL_TARGETS) == 8
+    assert set(MODEL_TARGETS) < set(HAZARD_GROUPS)
+
+
+def test_third_party_is_flagged_low_evidence() -> None:
+    assert THIRD_PARTY in MODEL_TARGETS
+    assert THIRD_PARTY in LOW_EVIDENCE_GROUPS

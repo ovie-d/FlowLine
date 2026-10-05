@@ -1,4 +1,4 @@
-"""Map CER cause codes to Flowline hazard groups (DRAFT — pending approval).
+"""Map CER cause codes to Flowline hazard groups (approved 2026-10-05).
 
 The CER's top-level "What happened category" is too coarse for crew planning
 (e.g. "External Interference" mixes fire hazards, floods and third-party hits),
@@ -9,14 +9,16 @@ Primary group rule (deterministic):
 1. Physical damage mechanisms win over conditions, which win over human acts.
 2. Within a tier, the first-listed code wins (CER entry order).
 3. No usable detailed code -> fall back to the top-level category.
+
+Other / unknown and Undetermined are stored and shown as evidence, but are not
+forecast targets (MODEL_TARGETS).
 """
 
 from __future__ import annotations
 
 import pandas as pd
 
-CORROSION = "corrosion"
-CRACKING = "cracking"
+CORROSION_CRACKING = "corrosion_cracking"
 EQUIPMENT = "equipment_failure"
 INCORRECT_OPERATION = "incorrect_operation"
 THIRD_PARTY = "third_party_damage"
@@ -25,11 +27,11 @@ WEATHER = "natural_forces_weather"
 CONSTRUCTION_MATERIAL = "construction_material_defect"
 FIRE_IGNITION = "fire_ignition"
 OTHER = "other_unknown"
-UNDETERMINED = "undetermined"  # still under investigation; excluded from modelling
+UNDETERMINED = "undetermined"  # still under investigation
 
-HAZARD_GROUPS: tuple[str, ...] = (
-    CORROSION,
-    CRACKING,
+# Forecast classes, in display order.
+MODEL_TARGETS: tuple[str, ...] = (
+    CORROSION_CRACKING,
     EQUIPMENT,
     INCORRECT_OPERATION,
     THIRD_PARTY,
@@ -37,12 +39,16 @@ HAZARD_GROUPS: tuple[str, ...] = (
     WEATHER,
     CONSTRUCTION_MATERIAL,
     FIRE_IGNITION,
-    OTHER,
 )
 
+# Every group an incident can be assigned (stored in the database).
+HAZARD_GROUPS: tuple[str, ...] = (*MODEL_TARGETS, OTHER, UNDETERMINED)
+
+# Groups with too little history to forecast with confidence (flag in the UI).
+LOW_EVIDENCE_GROUPS: frozenset[str] = frozenset({THIRD_PARTY})
+
 HAZARD_LABELS: dict[str, str] = {
-    CORROSION: "Corrosion (external / internal)",
-    CRACKING: "Cracking (fatigue, SCC)",
+    CORROSION_CRACKING: "Corrosion & cracking",
     EQUIPMENT: "Equipment & component failure",
     INCORRECT_OPERATION: "Incorrect operation / procedures",
     THIRD_PARTY: "Third-party & mechanical damage",
@@ -61,16 +67,16 @@ DAMAGE_DETAIL_MAP: dict[str, str] = {
     "Other Causes, Control System Malfunction": EQUIPMENT,
     "Other Causes, Improper Operation": INCORRECT_OPERATION,
     "Other Causes, Unknown": OTHER,
-    "Structural Degradation, Corrosion Fatigue": CRACKING,
+    "Structural Degradation, Corrosion Fatigue": CORROSION_CRACKING,
 }
 DAMAGE_LEVEL2_MAP: dict[str, str] = {
     "Construction": CONSTRUCTION_MATERIAL,
-    "Cracking": CRACKING,
+    "Cracking": CORROSION_CRACKING,
     "Electrical Power System Failure": EQUIPMENT,
     "Equipment": EQUIPMENT,
     "External Interference": THIRD_PARTY,
     "Geotechnical Failure": GEOTECHNICAL,
-    "Material Loss": CORROSION,
+    "Material Loss": CORROSION_CRACKING,
     "Material or Manufacturing": CONSTRUCTION_MATERIAL,
     "Structural Degradation": CONSTRUCTION_MATERIAL,
 }
@@ -87,7 +93,7 @@ HUMAN_PREFIXES: tuple[str, ...] = ("Substandard Acts", "Substandard Conditions")
 
 # Fallback when no detailed code is usable.
 CATEGORY_FALLBACK: dict[str, str] = {
-    "Corrosion and Cracking": CORROSION,
+    "Corrosion and Cracking": CORROSION_CRACKING,
     "Defect and Deterioration": CONSTRUCTION_MATERIAL,
     "Equipment Failure": EQUIPMENT,
     "External Interference": THIRD_PARTY,
