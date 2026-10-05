@@ -169,7 +169,7 @@ Tests never call a real LLM or touch your decision log or usage log.
 - [`docs/MODEL_REPORT.md`](docs/MODEL_REPORT.md) — honest evaluation (time split, rolling origin, baselines, ablations, operator check, where it fails)
 - [`docs/DATA_PROFILE.md`](docs/DATA_PROFILE.md) — CER data profile, hazard taxonomy, leakage check of every candidate feature
 - [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) · [`docs/QA_PREP.md`](docs/QA_PREP.md) — 5-minute demo and likely questions
-- [`docs/WEATHER_COVERAGE.md`](docs/WEATHER_COVERAGE.md) · [`docs/research/`](docs/research/) · [`docs/BACKLOG.md`](docs/BACKLOG.md)
+- [`docs/WEATHER_COVERAGE.md`](docs/WEATHER_COVERAGE.md) · [`docs/WASHOUT_WATCH.md`](docs/WASHOUT_WATCH.md) · [`docs/research/`](docs/research/) · [`docs/BACKLOG.md`](docs/BACKLOG.md)
 - [`HANDOFF.md`](HANDOFF.md) / [`CODING_GUIDELINES.md`](CODING_GUIDELINES.md) — original ranking product
 
 ## Data sources

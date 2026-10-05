@@ -52,7 +52,10 @@ crossed by CER pipelines, washout/ground-movement incidents before 2022 sat clos
 pipeline–waterway crossing than other incidents: **44% vs 27% within 2 km** (median 2.2
 vs 3.5 km). That rests on only **48 washouts**, so it's **suggestive, not proof** — and
 it isn't a model input. An operator's own water-crossing and geohazard inventory would
-let a pilot test it properly.
+let a pilot test it properly. We did test both ideas as model features — rainfall
+anomaly versus each station's own normal, and distance to pipeline–waterway crossings —
+on 2016–2021 checks only: **no measurable gain** (e.g. crossings −0.005 [−0.023, +0.011]),
+so they're not in the model (`docs/WASHOUT_WATCH.md`).
 
 ### "How do you know there's no data leakage?"
 - **Time split:** trained on ≤ 2021, tested on 2022+; tuning decisions use only the last

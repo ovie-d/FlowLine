@@ -1,6 +1,6 @@
 # Backlog
 
-## Washout watch (after Phase 10 is demoable · time-box 3 hours)
+## Washout watch (after Phase 10 is demoable · time-box 3 hours) — DONE: dropped
 
 **Why:** post-2022 Alberta geotechnical incidents (mostly washout / erosion) followed
 wetter months than other incidents, but raw station precipitation gave the model no
@@ -18,3 +18,10 @@ or tune on the 2022+ test set.
 
 **Exit:** if it does not help on the rolling-origin check, drop it and keep the
 descriptive finding (UI insight card, GET /insights/washout).
+
+**Result (2026-10-05, ~70 min of the 3-hour box):** no candidate met the pre-registered
+rule on 2016–2021 rolling origins (689 incidents pooled). Rainfall anomaly −0.005
+[−0.023, +0.014], waterway crossings −0.005 [−0.023, +0.011], both −0.004 [−0.023, +0.015]
+(Δ log loss, Canada). Alberta-only intervals also include zero. Features dropped; the
+descriptive washout card and the river-crossing talking point remain. Details:
+`docs/WASHOUT_WATCH.md`.
