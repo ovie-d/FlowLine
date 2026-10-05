@@ -130,3 +130,26 @@ def test_ranking_puts_timed_routes_before_straight_line() -> None:
         {"name": "c", "route": {"duration_min": 30.0, "distance_km": 40.0}},
     ]
     assert [r["name"] for r in rank_by_drive_time(rows)] == ["c", "b", "a"]
+
+
+def _live_osrm() -> bool:
+    try:
+        return (
+            httpx.get(
+                "http://localhost:5000/nearest/v1/driving/-113.49,53.55", timeout=1
+            ).status_code
+            == 200
+        )
+    except httpx.HTTPError:
+        return False
+
+
+@pytest.mark.skipif(
+    not _live_osrm(), reason="local OSRM not running (docker compose up -d osrm)"
+)
+def test_live_osrm_route_in_alberta(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OSRM_URL", "http://localhost:5000")
+    out = route(EDSON, Point(53.40, -117.57))  # Edson -> near Hinton
+    assert out["provider"] == "osrm"
+    assert 40 < out["duration_min"] < 120 and 60 < out["distance_km"] < 130
+    assert out["geometry"]["type"] == "LineString"
