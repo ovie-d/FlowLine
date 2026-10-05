@@ -46,6 +46,14 @@ incidents (2.6×) and followed wetter months (median 34.9 mm vs 18.5 mm prior-30
 rain) — but the model can't learn it from the earlier years, when such incidents were
 rare. It's shown as an observed pattern, not a forecast.
 
+### "What would help with washouts?" — pilot talking point
+Location matters more than weather so far. Using OpenStreetMap rivers and streams
+crossed by CER pipelines, washout/ground-movement incidents before 2022 sat closer to a
+pipeline–waterway crossing than other incidents: **44% vs 27% within 2 km** (median 2.2
+vs 3.5 km). That rests on only **48 washouts**, so it's **suggestive, not proof** — and
+it isn't a model input. An operator's own water-crossing and geohazard inventory would
+let a pilot test it properly.
+
 ### "How do you know there's no data leakage?"
 - **Time split:** trained on ≤ 2021, tested on 2022+; tuning decisions use only the last
   training year.
