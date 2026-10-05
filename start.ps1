@@ -54,6 +54,15 @@ if (-not (Test-Path $Py)) {
   & $Py -m pip install -q -r requirements.txt
   if ($LASTEXITCODE -ne 0) { Die "pip install failed." }
 }
+# Re-install when requirements.txt changes (e.g. a new package after git pull).
+$reqStamp = ".venv\flowline-requirements.sha"
+$reqSha = (Get-FileHash requirements.txt -Algorithm SHA256).Hash.ToLower()
+$oldReq = if (Test-Path $reqStamp) { Get-Content $reqStamp } else { "" }
+if ($oldReq -ne $reqSha) {
+  Say "Installing Python requirements (requirements.txt changed)..."
+  & $Py -m pip install -q -r requirements.txt
+  if ($LASTEXITCODE -eq 0) { $reqSha | Set-Content $reqStamp }
+}
 if (-not (Test-Path node_modules)) {
   Say "Installing Node packages (first run only)..."
   npm ci --no-audit --no-fund
@@ -104,6 +113,17 @@ if (-not $count -or $count -eq "0") {
   if ($LASTEXITCODE -ne 0) { Die "Database load failed." }
 }
 Ok "Database ready"
+
+# ---------------------------------------------------------------- river crossings (map layer)
+if (Test-Path "data\osm\alberta-latest.osm.pbf") {
+  $hasX = & $Py -c "from core.env import load_dotenv; load_dotenv(); from core.pg import try_connect; c = try_connect(); print(int(bool(c and c.execute('SELECT to_regclass(%s) IS NOT NULL AS ok', ('public.waterway_crossings',)).fetchone()['ok'])))" 2>$null
+  if ($hasX -ne "1") {
+    Say "Building the river-crossings map layer from the OSM extract (one-time, a few minutes)..."
+    & $Py -m scripts.washout_crossings --layer-only *> logs\crossings.log
+    if ($LASTEXITCODE -eq 0) { Ok "River-crossings layer built" }
+    else { Write-Host "!! River-crossings layer not built; see logs\crossings.log (the map works without it)." -ForegroundColor Red }
+  }
+}
 
 # ---------------------------------------------------------------- app
 # Rebuild only when .env.local, dependencies, config or frontend sources changed.

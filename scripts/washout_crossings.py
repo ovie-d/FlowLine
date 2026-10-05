@@ -1,9 +1,12 @@
 """Washout watch: pipeline–waterway crossings from the Alberta OSM extract.
 
-Usage: python -m scripts.washout_crossings   (needs `pip install osmium`; experiment only)
+Usage:
+  python -m scripts.washout_crossings               layer + experiment features
+  python -m scripts.washout_crossings --layer-only  layer only (start.sh runs this once)
 1. Loads OSM ways tagged waterway=river|stream|canal into PostGIS (table waterways).
-2. Intersects them with the CER pipeline systems (table pipelines) -> crossing points.
-3. Writes per-incident features to data/processed/incident_crossings.csv:
+2. Intersects them with the CER pipeline systems (table pipelines) -> crossing points
+   (table waterway_crossings: the map's river-crossings layer, display only).
+3. Experiment only: writes per-incident features to data/processed/incident_crossings.csv:
    dist_crossing_km (nearest crossing) and n_crossings_10km.
 Only Alberta waterways are available, so incidents outside the extract's bounding
 box get missing values (never zero). Crossings are static geography, known before
@@ -12,6 +15,7 @@ any incident.
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 import osmium
@@ -89,20 +93,39 @@ FROM incidents i
 """
 
 
+def build_layer(conn, pbf: Path = PBF) -> int:
+    """Load OSM waterways and rebuild the waterway_crossings table; returns its size."""
+    conn.execute(SCHEMA)
+    handler = WaterwayHandler(conn)
+    handler.apply_file(str(pbf), locations=True, idx="flex_mem")
+    handler.flush()
+    conn.execute("CREATE INDEX ON waterways USING gist (geom)")
+    conn.commit()
+    print(f"waterways: {handler.count:,}")
+    conn.execute(CROSSINGS_SQL)
+    conn.commit()
+    n = conn.execute("SELECT count(*) AS n FROM waterway_crossings").fetchone()["n"]
+    print(f"pipeline–waterway crossings: {n:,}")
+    return n
+
+
 def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Pipeline–waterway crossings from OSM."
+    )
+    parser.add_argument(
+        "--layer-only", action="store_true", help="build the map layer only"
+    )
+    args = parser.parse_args()
     load_dotenv()
+    if not PBF.exists():
+        raise SystemExit(
+            f"Missing {PBF.relative_to(ROOT)} (download the Alberta OSM extract)."
+        )
     with connect() as conn:
-        conn.execute(SCHEMA)
-        handler = WaterwayHandler(conn)
-        handler.apply_file(str(PBF), locations=True, idx="flex_mem")
-        handler.flush()
-        conn.execute("CREATE INDEX ON waterways USING gist (geom)")
-        conn.commit()
-        print(f"waterways: {handler.count:,}")
-        conn.execute(CROSSINGS_SQL)
-        conn.commit()
-        n = conn.execute("SELECT count(*) AS n FROM waterway_crossings").fetchone()["n"]
-        print(f"pipeline–waterway crossings: {n:,}")
+        build_layer(conn)
+        if args.layer_only:
+            return
         x0, y0, x1, y1 = AB_BOUNDS
         rows = conn.execute(
             FEATURES_SQL,

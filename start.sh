@@ -58,6 +58,13 @@ if [[ ! -x "$PY" ]]; then
   .venv/bin/pip install -q --upgrade pip
   .venv/bin/pip install -q -r requirements.txt
 fi
+# Re-install when requirements.txt changes (e.g. a new package after git pull).
+REQ_STAMP=".venv/flowline-requirements.sha"
+REQ_SHA="$( (sha256sum requirements.txt 2>/dev/null || shasum -a 256 requirements.txt) | cut -d' ' -f1)"
+if [[ "$(cat "$REQ_STAMP" 2>/dev/null)" != "$REQ_SHA" ]]; then
+  say "Installing Python requirements (requirements.txt changed)…"
+  .venv/bin/pip install -q -r requirements.txt && printf '%s' "$REQ_SHA" > "$REQ_STAMP"
+fi
 if [[ ! -d node_modules ]]; then
   command -v npm >/dev/null || die "Node.js 20+ is required."
   say "Installing Node packages (first run only)…"
@@ -115,6 +122,27 @@ if [[ "${N_INCIDENTS:-0}" == "0" ]]; then
   "$PY" -m scripts.load_postgres
 fi
 ok "Database ready"
+
+# ---------------------------------------------------------------- river crossings (map layer)
+if [[ -f data/osm/alberta-latest.osm.pbf ]]; then
+  HAS_CROSSINGS="$("$PY" - <<'PYEOF' 2>/dev/null || echo 0
+from core.env import load_dotenv
+load_dotenv()
+from core.pg import try_connect
+conn = try_connect()
+sql = "SELECT to_regclass('public.waterway_crossings') IS NOT NULL AS ok"
+print(int(bool(conn and conn.execute(sql).fetchone()["ok"])))
+PYEOF
+)"
+  if [[ "$HAS_CROSSINGS" != "1" ]]; then
+    say "Building the river-crossings map layer from the OSM extract (one-time, a few minutes)…"
+    if "$PY" -m scripts.washout_crossings --layer-only >logs/crossings.log 2>&1; then
+      ok "River-crossings layer built ($(tail -1 logs/crossings.log))"
+    else
+      warn "River-crossings layer not built; see logs/crossings.log (the map works without it)."
+    fi
+  fi
+fi
 
 # ---------------------------------------------------------------- app
 # Rebuild only when something baked into the bundle changed: NEXT_PUBLIC_* values in

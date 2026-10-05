@@ -105,8 +105,9 @@ Frontend — `.env.local`:
 The forecast and dispatch maps have their own **Map & layers** panel: basemap (Auto follows
 the dark/light theme; Dark, Light, Streets, Satellite), 3D terrain, globe when zoomed out,
 and layers (incidents, heatmap, pipelines, crew bases, river crossings). The river-crossings
-layer appears after `python -m scripts.washout_crossings` has built it (needs the OSM
-extract); until then the panel says so. Theme and map choices are remembered per browser.
+layer is built by `start.sh` on first run when the OSM extract is present (about two
+minutes; `python -m scripts.washout_crossings --layer-only` does the same by hand); without
+the extract the panel says so. Theme and map choices are remembered per browser.
 
 ---
 
