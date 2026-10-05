@@ -47,7 +47,9 @@ export function HazardSvgMap({
   pickMode,
   hiddenHazards,
   onPick,
-}: MapViewProps) {
+  offlineReason,
+  onRetry,
+}: MapViewProps & { offlineReason?: string | null; onRetry?: () => void }) {
   const svgRef = useRef<SVGSVGElement | null>(null);
 
   const pipePaths = useMemo(
@@ -148,9 +150,15 @@ export function HazardSvgMap({
             );
           })()}
       </svg>
-      <span className="pointer-events-none absolute bottom-2 left-2 rounded bg-panel/80 px-2 py-0.5 text-[11px] text-muted">
-        Offline map view (Alberta) · set NEXT_PUBLIC_MAPBOX_TOKEN for the basemap
-      </span>
+      <div role="status" className="absolute bottom-2 left-2 max-w-[70%] rounded bg-panel/90 px-2 py-1 text-[11px] text-muted">
+        <span className="font-semibold text-fg">Offline map view (Alberta).</span>{" "}
+        {offlineReason ?? "Mapbox basemap unavailable."}
+        {onRetry && (
+          <button type="button" onClick={onRetry} className="ml-2 rounded border border-border px-1.5 text-fg hover:border-accent">
+            Retry Mapbox
+          </button>
+        )}
+      </div>
     </div>
   );
 }

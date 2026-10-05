@@ -11,21 +11,37 @@ const HazardMapbox = dynamic(() => import("./HazardMapbox"), {
   loading: () => <div className="h-full w-full animate-pulse bg-panel" aria-label="Loading map" />,
 });
 
-/** Mapbox dark basemap when a token is set; SVG offline view otherwise (or on failure). */
+const NO_TOKEN_REASON =
+  "No Mapbox token in this build: set NEXT_PUBLIC_MAPBOX_TOKEN in .env.local and restart (start.sh rebuilds).";
+
+type MapMode = { mode: "mapbox" | "offline"; reason: string | null; attempt: number };
+
+/** Mapbox basemap when a token is set; SVG offline view (with the real reason) otherwise. */
 export function HazardMap(
   props: MapViewProps & { onToggleHazard: (g: HazardGroup) => void },
 ) {
   const token = (process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "").trim();
-  const [useMapbox, setUseMapbox] = useState(token.length > 0);
-  const onFallback = useCallback(() => setUseMapbox(false), []);
+  const [state, setState] = useState<MapMode>(() =>
+    token
+      ? { mode: "mapbox", reason: null, attempt: 0 }
+      : { mode: "offline", reason: NO_TOKEN_REASON, attempt: 0 },
+  );
+  const onFallback = useCallback((reason: string) => {
+    console.warn(`[Flowline] Mapbox unavailable, using the offline map: ${reason}`);
+    setState((s) => ({ ...s, mode: "offline", reason }));
+  }, []);
+  const retry = useCallback(
+    () => setState((s) => ({ mode: "mapbox", reason: null, attempt: s.attempt + 1 })),
+    [],
+  );
   const { onToggleHazard, ...mapProps } = props;
 
   return (
     <div className="relative h-full w-full overflow-hidden">
-      {useMapbox ? (
-        <HazardMapbox token={token} onFallback={onFallback} {...mapProps} />
+      {state.mode === "mapbox" ? (
+        <HazardMapbox key={state.attempt} token={token} onFallback={onFallback} {...mapProps} />
       ) : (
-        <HazardSvgMap {...mapProps} />
+        <HazardSvgMap {...mapProps} offlineReason={state.reason} onRetry={token ? retry : undefined} />
       )}
       <MapLegend hidden={props.hiddenHazards} onToggle={onToggleHazard} />
       {props.pickMode === "dispatch" && (

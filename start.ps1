@@ -106,9 +106,23 @@ if (-not $count -or $count -eq "0") {
 Ok "Database ready"
 
 # ---------------------------------------------------------------- app
-Say "Building the web app (production)..."
-npm run build *> logs\web-build.log
-if ($LASTEXITCODE -ne 0) { Die "Web build failed - see logs\web-build.log" }
+# Rebuild only when .env.local, dependencies, config or frontend sources changed.
+$files = @(".env.local", "package-lock.json", "next.config.ts", "postcss.config.mjs", "tsconfig.json") |
+  Where-Object { Test-Path $_ }
+$files += Get-ChildItem -Recurse -File app, components, lib, public | Sort-Object FullName | ForEach-Object FullName
+$sha = [System.Security.Cryptography.SHA256]::Create()
+$hashes = ($files | ForEach-Object { (Get-FileHash $_ -Algorithm SHA256).Hash }) -join ""
+$stamp = [BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($hashes))) -replace "-", ""
+$stampFile = ".next\flowline-build-stamp"
+$oldStamp = if (Test-Path $stampFile) { Get-Content $stampFile } else { "" }
+if ($env:FORCE_BUILD -eq "1" -or -not (Test-Path ".next\BUILD_ID") -or $oldStamp -ne $stamp) {
+  Say "Building the web app (production; .env.local or frontend changed)..."
+  npm run build *> logs\web-build.log
+  if ($LASTEXITCODE -ne 0) { Die "Web build failed - see logs\web-build.log" }
+  $stamp | Set-Content $stampFile
+} else {
+  Ok "Web build is up to date"
+}
 
 Say "Starting API on :$ApiPort and web app on :$WebPort..."
 $api = Start-Process -FilePath ".venv\Scripts\uvicorn.exe" -PassThru -WindowStyle Hidden `

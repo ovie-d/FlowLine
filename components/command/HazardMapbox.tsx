@@ -17,7 +17,7 @@ import type { MapViewProps } from "./mapTypes";
 
 const DARK_STYLE = "mapbox://styles/mapbox/dark-v11";
 const ALBERTA_VIEW = { longitude: -114.8, latitude: 54.6, zoom: 4.4 };
-const LOAD_TIMEOUT_MS = 8000;
+const LOAD_TIMEOUT_MS = 25000;
 
 const HAZARD_MATCH = [
   "match",
@@ -42,18 +42,32 @@ export default function HazardMapbox({
   hiddenHazards,
   onPick,
   onFallback,
-}: MapViewProps & { token: string; onFallback: () => void }) {
+}: MapViewProps & { token: string; onFallback: (reason: string) => void }) {
   const mapRef = useRef<MapRef | null>(null);
   const [hover, setHover] = useState<Hover | null>(null);
   const loaded = useRef(false);
 
-  // Fall back to the SVG map if the style never loads (bad token, offline).
+  // Client-only component (dynamic, ssr: false): window and document exist here.
+  const [webgl] = useState(() => {
+    try {
+      const c = document.createElement("canvas");
+      return !!(c.getContext("webgl2") || c.getContext("webgl"));
+    } catch {
+      return false;
+    }
+  });
+
+  // Fall back only on real failures, and say which one.
   useEffect(() => {
+    if (!webgl) {
+      onFallback("WebGL is unavailable in this browser (turn on hardware acceleration; see chrome://gpu).");
+      return;
+    }
     const t = window.setTimeout(() => {
-      if (!loaded.current) onFallback();
+      if (!loaded.current) onFallback(`The Mapbox basemap did not load within ${LOAD_TIMEOUT_MS / 1000} s (network or firewall?).`);
     }, LOAD_TIMEOUT_MS);
     return () => window.clearTimeout(t);
-  }, [onFallback]);
+  }, [webgl, onFallback]);
 
   useEffect(() => {
     if (!focus) return;
@@ -130,6 +144,8 @@ export default function HazardMapbox({
     });
   }
 
+  if (!webgl) return null;
+
   return (
     <Map
       ref={mapRef}
@@ -146,8 +162,14 @@ export default function HazardMapbox({
       onLoad={() => {
         loaded.current = true;
       }}
-      onError={() => {
-        if (!loaded.current) onFallback();
+      onError={(e) => {
+        if (loaded.current) return;
+        const err = e.error as (Error & { status?: number }) | undefined;
+        onFallback(
+          err?.status
+            ? `Mapbox refused the request (HTTP ${err.status}): check the token and its URL restrictions.`
+            : `Mapbox failed to load: ${err?.message ?? "unknown error"}.`,
+        );
       }}
       attributionControl
     >

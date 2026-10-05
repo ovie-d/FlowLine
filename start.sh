@@ -117,8 +117,24 @@ fi
 ok "Database ready"
 
 # ---------------------------------------------------------------- app
-say "Building the web app (production)…"
-npm run build >logs/web-build.log 2>&1 || die "Web build failed — see logs/web-build.log"
+# Rebuild only when something baked into the bundle changed: NEXT_PUBLIC_* values in
+# .env.local, dependencies, config, or frontend sources. (No server is running here —
+# the port check above guarantees it — so a rebuild can never leave a stale page live.)
+build_stamp() {
+  {
+    cat .env.local package-lock.json next.config.ts postcss.config.mjs tsconfig.json 2>/dev/null
+    find app components lib public -type f -print0 2>/dev/null | sort -z | xargs -0 sha256sum
+  } | sha256sum | cut -d' ' -f1
+}
+STAMP_FILE=".next/flowline-build-stamp"
+STAMP="$(build_stamp)"
+if [[ "${FORCE_BUILD:-0}" == "1" || ! -f .next/BUILD_ID || "$(cat "$STAMP_FILE" 2>/dev/null)" != "$STAMP" ]]; then
+  say "Building the web app (production; .env.local or frontend changed)…"
+  npm run build >logs/web-build.log 2>&1 || die "Web build failed — see logs/web-build.log"
+  echo "$STAMP" > "$STAMP_FILE"
+else
+  ok "Web build is up to date (.env.local and frontend unchanged)"
+fi
 
 say "Starting API on :$API_PORT and web app on :$WEB_PORT…"
 nohup .venv/bin/uvicorn api.main:app --host 127.0.0.1 --port "$API_PORT" --workers 1 \
