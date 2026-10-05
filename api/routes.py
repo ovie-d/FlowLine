@@ -458,6 +458,23 @@ def map_incidents() -> dict[str, Any]:
         return mapdata.incident_points(conn)
 
 
+@router.get("/map/incidents/{incident_number}")
+def map_incident(incident_number: str) -> dict[str, Any]:
+    """One incident for the map popup, cause codes in plain English."""
+    with _db_or_503() as conn:
+        detail = mapdata.incident_detail(conn, incident_number)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Unknown incident")
+    return detail
+
+
+@router.get("/map/crossings")
+def map_crossings() -> dict[str, Any]:
+    """Pipeline–waterway crossings (display only; empty if not built)."""
+    with _db_or_503() as conn:
+        return mapdata.waterway_crossings(conn)
+
+
 @router.get("/map/pipelines")
 def map_pipelines() -> dict[str, Any]:
     """CER pipeline systems (simplified) as GeoJSON, display only."""

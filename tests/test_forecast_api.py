@@ -340,7 +340,50 @@ def test_map_layers(api: TestClient) -> None:
     points = api.get("/map/incidents").json()
     assert points["type"] == "FeatureCollection" and len(points["features"]) == 5
     props = points["features"][0]["properties"]
-    assert set(props) == {"id", "date", "hazard_group", "hazard_label", "place"}
+    assert set(props) == {"id", "date", "year", "hazard_group", "hazard_label", "place"}
+    assert props["year"] == int(props["date"][:4])
     lines = api.get("/map/pipelines").json()
     assert lines["features"][0]["properties"]["name"] == "Trans Mountain Pipeline"
     assert lines["features"][0]["geometry"]["type"] in {"LineString", "MultiLineString"}
+
+
+def test_plain_cause_codes() -> None:
+    from core.mapdata import plain_codes
+
+    assert plain_codes(
+        "Damage or deterioration mechanism, External Interference, Third Party;"
+        "Substandard Conditions, Weather Related, Adverse weather;"
+        "Damage or deterioration mechanism, External Interference, Third Party"
+    ) == ["Third Party", "Adverse weather"]
+    assert plain_codes("To be determined") == [] and plain_codes(None) == []
+
+
+def test_incident_detail_and_crossings(api: TestClient, pg_env: str) -> None:
+    with psycopg.connect(pg_env) as conn:
+        conn.execute(
+            "UPDATE incidents SET what_category = 'Equipment Failure', "
+            "detailed_what = 'Damage or deterioration mechanism, Equipment Failure, Seal', "
+            "why_category = 'To be determined', company = 'NGTL GP Ltd.' WHERE incident_number = 'E0'"
+        )
+        conn.execute("DROP TABLE IF EXISTS waterway_crossings")
+        conn.commit()
+    d = api.get("/map/incidents/E0").json()
+    assert d["operator"] == "NGTL GP Ltd." and d["operator_group"] == "NGTL"
+    assert d["what_happened"] == ["Equipment Failure"] and d["what_detail"] == ["Seal"]
+    assert d["why"] == [] and d["cause_determined"] is True
+    assert d["hazard_label"] and d["date"] == (REF - timedelta(days=900)).isoformat()
+    assert api.get("/map/incidents/NOPE").status_code == 404
+
+    missing = api.get("/map/crossings").json()
+    assert missing["available"] is False and missing["features"] == []
+    with psycopg.connect(pg_env) as conn:
+        conn.execute(
+            "CREATE TABLE waterway_crossings AS SELECT 1::bigint AS id, 'river'::text AS kind, "
+            "'Trans Mountain Pipeline'::text AS pipeline_name, "
+            "ST_SetSRID(ST_MakePoint(-116.5, 53.57), 4326) AS geom"
+        )
+        conn.commit()
+    built = api.get("/map/crossings").json()
+    assert built["available"] is True
+    assert built["features"][0]["geometry"]["coordinates"] == [-116.5, 53.57]
+    assert built["features"][0]["properties"]["kind"] == "river"
