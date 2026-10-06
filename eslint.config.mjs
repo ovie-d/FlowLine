@@ -12,7 +12,19 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Python venv (bundled JS in site-packages), data and generated artefacts.
+    ".venv/**",
+    "data/**",
+    "osrm/**",
+    "logs/**",
+    "desktop/node_modules/**",
+    "desktop/dist/**",
   ]),
+  // Electron main process and preload are CommonJS.
+  {
+    files: ["desktop/**/*.js"],
+    rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
 ]);
 
 export default eslintConfig;

@@ -38,7 +38,7 @@ export function ChatThread({
         m.role === "user" ? (
           <div key={m.id} className="flex flex-col items-end">
             <div
-              className="max-w-[85%] bg-[#15171A] px-3 py-2 text-[14px] text-white"
+              className="max-w-[85%] bg-fg px-3 py-2 text-[14px] text-bg"
               style={{ borderRadius: "12px 12px 3px 12px" }}
             >
               {m.text}
@@ -51,8 +51,8 @@ export function ChatThread({
                 key={`${t.name}-${i}`}
                 className="rounded font-mono text-[11px]"
                 style={{
-                  background: "#EEF2FF",
-                  color: "#1E3A8A",
+                  background: "var(--panel-2)",
+                  color: "var(--accent)",
                   padding: "3px 8px",
                   borderRadius: 4,
                 }}
@@ -63,8 +63,8 @@ export function ChatThread({
             <div
               className={`max-w-[95%] px-3 py-2.5 text-[14px] leading-[1.5] ${
                 m.error
-                  ? "bg-[#FDEEE3] text-[#8A2E08]"
-                  : "bg-[#F7F7F4] text-[#15171A]"
+                  ? "bg-thin-bg text-warn"
+                  : "bg-panel-2 text-fg"
               }`}
               style={{ borderRadius: "3px 12px 12px 12px" }}
             >
@@ -95,7 +95,7 @@ export function ChatThread({
               </ReactMarkdown>
             </div>
             {m.escalateCorridor && (
-              <div className="flex w-full items-center justify-between gap-2.5 rounded-lg border border-[#ECECE7] px-2.5 py-2">
+              <div className="flex w-full items-center justify-between gap-2.5 rounded-lg border border-border px-2.5 py-2">
                 <span className="flex min-w-0 flex-col gap-0.5">
                   <span className="text-[14px] font-semibold">
                     {m.escalateCorridor}
@@ -103,7 +103,7 @@ export function ChatThread({
                 </span>
                 {loggedEscalations.has(m.escalateCorridor) ? (
                   <span
-                    className="inline-flex items-center whitespace-nowrap rounded-lg border border-[#E3E3DE] bg-[#EFEFEB] px-3 text-[13px] font-semibold text-[#3A3E44]"
+                    className="inline-flex items-center whitespace-nowrap rounded-lg border border-border bg-border px-3 text-[13px] font-semibold text-fg"
                     style={{ minHeight: 36 }}
                   >
                     Logged
@@ -113,7 +113,7 @@ export function ChatThread({
                     type="button"
                     disabled={approving === m.escalateCorridor}
                     onClick={() => onApprove(m.escalateCorridor!)}
-                    className="whitespace-nowrap rounded-lg border border-[#15171A] bg-[#15171A] px-3 text-[13px] font-semibold text-white disabled:opacity-50"
+                    className="whitespace-nowrap rounded-lg border border-fg bg-fg px-3 text-[13px] font-semibold text-bg disabled:opacity-50"
                     style={{ minHeight: 36 }}
                   >
                     {approving === m.escalateCorridor
@@ -127,7 +127,7 @@ export function ChatThread({
         ),
       )}
       {thinking && (
-        <div className="text-[13px] italic text-[#5A5F66]">Thinking…</div>
+        <div className="text-[13px] italic text-muted">Thinking…</div>
       )}
     </div>
   );

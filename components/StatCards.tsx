@@ -34,12 +34,12 @@ export function StatCards({
     >
       <Card label="Top priority corridor">
         <div
-          className="font-display text-[26px] leading-[1.1] text-[#15171A]"
+          className="font-display text-[26px] leading-[1.1] text-fg"
           style={{ marginTop: 2 }}
         >
           {topCorridor ?? "—"}
         </div>
-        <div className="mt-0.5 text-[13px] text-[#5A5F66]">
+        <div className="mt-0.5 text-[13px] text-muted">
           {topRow
             ? `${topRow.n} incidents · ${topRow.n_high} high-consequence`
             : "waiting"}
@@ -48,28 +48,28 @@ export function StatCards({
 
       <Card label="Serious events inside the top 15">
         <div
-          className="font-mono text-[22px] font-semibold text-[#15171A]"
+          className="font-mono text-[22px] font-semibold text-fg"
           style={{ marginTop: 2 }}
         >
           {seriousTop15 ?? "—"}
-          <span className="text-[15px] font-medium text-[#5A5F66]">
+          <span className="text-[15px] font-medium text-muted">
             {" "}
             / {seriousTotal ?? "—"}
           </span>
         </div>
-        <div className="mt-0.5 text-[13px] text-[#5A5F66]">
+        <div className="mt-0.5 text-[13px] text-muted">
           Count-only baseline finds {seriousBaseline ?? "—"}
         </div>
       </Card>
 
       <Card label="Incidents crews would review">
         <div
-          className="font-mono text-[22px] font-semibold text-[#15171A]"
+          className="font-mono text-[22px] font-semibold text-fg"
           style={{ marginTop: 2 }}
         >
           {incidentsTop15 ?? "—"}
         </div>
-        <div className="mt-0.5 text-[13px] text-[#5A5F66]">
+        <div className="mt-0.5 text-[13px] text-muted">
           Count-only baseline: {incidentsBaseline ?? "—"}
         </div>
       </Card>
@@ -79,13 +79,13 @@ export function StatCards({
           className="whitespace-nowrap font-mono text-[22px] font-semibold leading-[1.15]"
           style={{ marginTop: 2 }}
         >
-          <span style={{ color: "#A8370A" }}>{escalate}</span>
-          <span className="text-[15px] font-medium text-[#5A5F66]">
+          <span style={{ color: "var(--critical)" }}>{escalate}</span>
+          <span className="text-[15px] font-medium text-muted">
             {" "}
             escalate
           </span>
         </div>
-        <div className="mt-0.5 whitespace-nowrap text-[13px] text-[#5A5F66]">
+        <div className="mt-0.5 whitespace-nowrap text-[13px] text-muted">
           {inspect} inspect · {defer} defer
         </div>
       </Card>
@@ -102,10 +102,10 @@ function Card({
 }) {
   return (
     <div
-      className="rounded-xl border border-[#E3E3DE] bg-white"
+      className="rounded-xl border border-border bg-panel"
       style={{ padding: "12px 16px" }}
     >
-      <div className="text-[13px] text-[#5A5F66]">{label}</div>
+      <div className="text-[13px] text-muted">{label}</div>
       {children}
     </div>
   );

@@ -18,7 +18,7 @@ export function PolicyBar({ high, onChange }: Props) {
 
   return (
     <section
-      className="flex flex-col rounded-xl border border-[#E3E3DE] bg-white"
+      className="flex flex-col rounded-xl border border-border bg-panel"
       style={{ padding: "14px 20px", gap: 12 }}
     >
       <style>{`
@@ -35,20 +35,20 @@ export function PolicyBar({ high, onChange }: Props) {
           outline: none;
         }
         .policy-slider:focus-visible::-webkit-slider-thumb {
-          box-shadow: 0 0 0 2px #1D4ED8, 0 1px 3px rgba(0,0,0,.18);
+          box-shadow: 0 0 0 2px var(--accent), 0 1px 3px rgba(0,0,0,.18);
         }
         .policy-slider:focus-visible::-moz-range-thumb {
-          box-shadow: 0 0 0 2px #1D4ED8, 0 1px 3px rgba(0,0,0,.18);
+          box-shadow: 0 0 0 2px var(--accent), 0 1px 3px rgba(0,0,0,.18);
         }
         .policy-slider::-webkit-slider-runnable-track {
           height: 4px;
           border-radius: 2px;
           background: linear-gradient(
             to right,
-            #15171A 0%,
-            #15171A var(--policy-fill, 0%),
-            #E3E3DE var(--policy-fill, 0%),
-            #E3E3DE 100%
+            var(--text) 0%,
+            var(--text) var(--policy-fill, 0%),
+            var(--border) var(--policy-fill, 0%),
+            var(--border) 100%
           );
         }
         .policy-slider::-webkit-slider-thumb {
@@ -58,26 +58,26 @@ export function PolicyBar({ high, onChange }: Props) {
           height: 18px;
           margin-top: -7px;
           border-radius: 50%;
-          background: #FFFFFF;
-          border: 1px solid #CFCFC9;
+          background: var(--panel);
+          border: 1px solid var(--border);
           box-shadow: 0 1px 3px rgba(0,0,0,.18);
         }
         .policy-slider::-moz-range-track {
           height: 4px;
           border-radius: 2px;
-          background: #E3E3DE;
+          background: var(--border);
         }
         .policy-slider::-moz-range-progress {
           height: 4px;
           border-radius: 2px;
-          background: #15171A;
+          background: var(--text);
         }
         .policy-slider::-moz-range-thumb {
           width: 18px;
           height: 18px;
           border-radius: 50%;
-          background: #FFFFFF;
-          border: 1px solid #CFCFC9;
+          background: var(--panel);
+          border: 1px solid var(--border);
           box-shadow: 0 1px 3px rgba(0,0,0,.18);
         }
       `}</style>
@@ -85,10 +85,10 @@ export function PolicyBar({ high, onChange }: Props) {
       {/* Row 1: label + policy text | presets */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-baseline gap-3">
-          <span className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[#5A5F66]">
+          <span className="text-[12px] font-semibold uppercase tracking-[0.08em] text-muted">
             Risk policy
           </span>
-          <span className="font-mono text-[13px] text-[#15171A]">
+          <span className="font-mono text-[13px] text-fg">
             {policyText(high)}
           </span>
         </div>
@@ -99,7 +99,7 @@ export function PolicyBar({ high, onChange }: Props) {
           className="inline-flex"
           style={{
             gap: 3,
-            background: "#F2F2EE",
+            background: "var(--panel-2)",
             borderRadius: 10,
             padding: 3,
           }}
@@ -119,8 +119,8 @@ export function PolicyBar({ high, onChange }: Props) {
                   padding: "0 14px",
                   border: "none",
                   borderRadius: 8,
-                  background: active ? "#FFFFFF" : "transparent",
-                  color: active ? "#15171A" : "#5A5F66",
+                  background: active ? "var(--panel)" : "transparent",
+                  color: active ? "var(--text)" : "var(--muted)",
                   boxShadow: active
                     ? "0 1px 2px rgba(0,0,0,.10)"
                     : undefined,
@@ -138,7 +138,7 @@ export function PolicyBar({ high, onChange }: Props) {
         className="flex items-center"
         style={{ gap: 12 }}
       >
-        <span className="shrink-0 text-[12px] text-[#5A5F66]">Frequency</span>
+        <span className="shrink-0 text-[12px] text-muted">Frequency</span>
         <label htmlFor="sev" className="sr-only">
           Severity weight
         </label>
@@ -157,7 +157,7 @@ export function PolicyBar({ high, onChange }: Props) {
             ["--policy-fill" as string]: `${fillPct}%`,
           }}
         />
-        <span className="shrink-0 text-[12px] text-[#5A5F66]">Severity</span>
+        <span className="shrink-0 text-[12px] text-muted">Severity</span>
       </div>
     </section>
   );

@@ -328,3 +328,14 @@ def dispatch_tool(
         return {"error": f"Unknown tool: {name}"}
     merged = _merge_dashboard_policy(name, arguments, policy)
     return fn(**merged)
+
+
+# Hazard Forecast tools (Phase 9) share the dispatcher with the ranking tools.
+from core.agent.forecast_tools import (
+    FORECAST_TOOL_FUNCTIONS,
+    FORECAST_TOOL_SCHEMAS,
+)
+
+TOOL_FUNCTIONS.update(FORECAST_TOOL_FUNCTIONS)
+TOOL_SCHEMAS.extend(FORECAST_TOOL_SCHEMAS)
+FORECAST_TOOL_NAMES = frozenset(FORECAST_TOOL_FUNCTIONS)

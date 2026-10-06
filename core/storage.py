@@ -1,4 +1,7 @@
-"""Append-only inspection decision log (JSON by default; SQLite optional)."""
+"""Append-only inspection decision log (JSON by default; SQLite or Postgres optional).
+
+DECISIONS_BACKEND = json | sqlite | postgres (postgres uses DATABASE_URL).
+"""
 
 from __future__ import annotations
 
@@ -10,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from core.db import connect, db_path, init_schema
+from core.pg import connect as pg_connect
 
 VALID_ACTIONS = frozenset({"inspect", "escalate", "defer"})
 VALID_SOURCES = frozenset({"planner", "agent_triage"})
@@ -48,7 +52,7 @@ def _normalize_entry(entry: dict[str, Any]) -> dict[str, Any]:
         )
 
     priority = str(entry["priority"]).strip()
-    if _backend() == "sqlite" and priority not in VALID_PRIORITIES:
+    if _backend() in {"sqlite", "postgres"} and priority not in VALID_PRIORITIES:
         raise ValueError(
             f"priority must be one of {sorted(VALID_PRIORITIES)}, got {priority!r}"
         )
@@ -148,8 +152,42 @@ def _append_decision_sqlite(stored: dict[str, Any]) -> dict[str, Any]:
     return stored
 
 
+def _read_decisions_pg() -> list[dict[str, Any]]:
+    with pg_connect() as conn:
+        rows = conn.execute(
+            "SELECT id, ts, corridor, action, priority, reason, policy, source "
+            "FROM decision_log ORDER BY ts, id"
+        ).fetchall()
+    return [
+        {**row, "ts": row["ts"].isoformat(), "policy": dict(row["policy"] or {})}
+        for row in rows
+    ]
+
+
+def _append_decision_pg(stored: dict[str, Any]) -> dict[str, Any]:
+    with pg_connect() as conn:
+        conn.execute(
+            "INSERT INTO decision_log "
+            "(id, ts, corridor, action, priority, reason, policy, source) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s)",
+            (
+                stored["id"],
+                stored["ts"],
+                stored["corridor"],
+                stored["action"],
+                stored["priority"],
+                stored["reason"],
+                json.dumps(stored["policy"]),
+                stored["source"],
+            ),
+        )
+    return stored
+
+
 def read_decisions() -> list[dict[str, Any]]:
     """Return logged decisions (empty list if missing/corrupt)."""
+    if _backend() == "postgres":
+        return _read_decisions_pg()
     if _backend() == "sqlite":
         try:
             return _read_decisions_sqlite()
@@ -161,6 +199,8 @@ def read_decisions() -> list[dict[str, Any]]:
 def append_decision(entry: dict[str, Any]) -> dict[str, Any]:
     """Validate and append one decision. Raises ValueError on bad action/source."""
     stored = _normalize_entry(entry)
+    if _backend() == "postgres":
+        return _append_decision_pg(stored)
     if _backend() == "sqlite":
         try:
             return _append_decision_sqlite(stored)

@@ -54,3 +54,21 @@ dist/
 inspection_decisions.json
 pipeline-incidents-comprehensive-data.csv
 *.db
+
+# hazard forecast — large / downloaded data and artifacts
+/data/raw/
+/data/osm/
+/data/weather/
+/data/processed/
+/models/*.bin
+/models/*.pkl
+/osrm/
+
+# agent usage logs (token counts / cost estimates)
+/logs/
+/.run/
+
+# Desktop app (Electron)
+desktop/node_modules/
+desktop/dist/
+desktop/build/flowline-home.json

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import datetime as dt
 import io
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeout
@@ -12,12 +13,29 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from api.config import config_from_params
-from api.schemas import AgentRequest, AgentResetRequest, CompareRequest
+from api.schemas import (
+    AgentRequest,
+    AgentResetRequest,
+    BriefingRequest,
+    CompareRequest,
+    CrewMapUpdate,
+    DispatchRequest,
+    ForecastRequest,
+)
 from api.sessions import get_history, reset_session, set_history
-from core.agent.loop import MAX_TOOL_STEPS, UNAVAILABLE, run_agent
+from core import mapdata
+from core.agent import llm
+from core.agent.budget import usage_summary
+from core.agent.loop import MAX_TOOL_STEPS, UNAVAILABLE, run_agent, run_briefing
 from core.assumptions import get_assumptions
 from core.compare import compare, improvement_for, improvement_round
+from core.crews import CrewMapError, dispatch, get_crews, update_crew_map
+from core.forecast import alberta_today, corridor_location, forecast, model_info
+from core.insights import washout_insight
+from core.pg import try_connect
+from core.readiness import readiness
 from core.scoring import explain_corridor, score
+from core.similar import find_similar, similar_to_incident
 from core.storage import read_decisions
 from core.triage import draft_triage
 
@@ -53,6 +71,17 @@ def _csv_filename(*, high: float, count_only: bool) -> str:
     if float(high).is_integer():
         return f"ranking_high{int(high)}.csv"
     return f"ranking_high{high}.csv".replace(".", "_")
+
+
+def _db_or_503():
+    conn = try_connect()
+    if conn is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Database unavailable — start it with `docker compose up -d db` "
+            "and load it with `python -m scripts.load_postgres`.",
+        )
+    return conn
 
 
 @router.get("/health")
@@ -197,13 +226,20 @@ def agent(body: AgentRequest) -> dict[str, Any]:
     for call in result.get("tool_calls", []) or []:
         if not isinstance(call, dict):
             continue
-        slim_calls.append(
-            {"name": call.get("name"), "input": call.get("input", {})}
-        )
+        slim_calls.append({"name": call.get("name"), "input": call.get("input", {})})
     payload: dict[str, Any] = {
         "answer": result.get("answer", ""),
         "tool_calls": slim_calls,
     }
+    for key in (
+        "numbers_verified",
+        "unsupported_numbers",
+        "provider",
+        "usage",
+        "reason",
+    ):
+        if key in result:
+            payload[key] = result[key]
     if result.get("error"):
         payload["error"] = True
     return payload
@@ -218,3 +254,229 @@ def agent_reset(body: AgentResetRequest) -> dict[str, bool]:
 @router.get("/decisions")
 def decisions() -> list[dict[str, Any]]:
     return read_decisions()
+
+
+@router.get("/crews")
+def crews() -> dict[str, Any]:
+    """Hazard -> crew -> equipment table and crew bases (sample data is flagged)."""
+    with _db_or_503() as conn:
+        return get_crews(conn)
+
+
+@router.put("/crews/map")
+def crews_map(body: CrewMapUpdate) -> dict[str, Any]:
+    """Replace the crews and equipment recommended for one hazard group."""
+    with _db_or_503() as conn:
+        try:
+            crews_out = update_crew_map(
+                conn,
+                body.hazard_group,
+                [c.model_dump(exclude_none=True) for c in body.crews],
+            )
+        except CrewMapError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"hazard_group": body.hazard_group, "crews": crews_out}
+
+
+@router.post("/dispatch/route")
+def dispatch_route(body: DispatchRequest) -> dict[str, Any]:
+    """Nearest crew bases with a matching crew, ranked by drive time, with routes."""
+    with _db_or_503() as conn:
+        try:
+            return dispatch(
+                conn,
+                lat=body.latitude,
+                lon=body.longitude,
+                hazard_group=body.hazard_group,
+                k=body.k,
+            )
+        except CrewMapError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+def _point_or_404(
+    conn: Any, lat: float | None, lon: float | None, corridor: str | None
+) -> tuple[float, float]:
+    if lat is not None and lon is not None:
+        return lat, lon
+    if corridor:
+        loc = corridor_location(conn, corridor)
+        if loc is None:
+            raise HTTPException(
+                status_code=404, detail=f"unknown corridor {corridor!r}"
+            )
+        return loc
+    raise HTTPException(status_code=422, detail="give lat and lon, or a corridor name")
+
+
+@router.post("/forecast")
+def forecast_route(body: ForecastRequest) -> dict[str, Any]:
+    """Hazard-mix forecast at a point or corridor for a date (default today)."""
+    with _db_or_503() as conn:
+        lat, lon = _point_or_404(conn, body.latitude, body.longitude, body.corridor)
+        out = forecast(
+            conn,
+            lat=lat,
+            lon=lon,
+            when=body.date or alberta_today(),
+            operator_group=body.operator_group,
+        )
+    if body.corridor:
+        out["corridor"] = body.corridor
+    return out
+
+
+LatQ = Annotated[float | None, Query(ge=-90, le=90)]
+LonQ = Annotated[float | None, Query(ge=-180, le=180)]
+WeatherQ = Annotated[float | None, Query()]
+
+
+@router.get("/similar")
+def similar_route(
+    lat: LatQ = None,
+    lon: LonQ = None,
+    date: dt.date | None = None,
+    k: Annotated[int, Query(ge=1, le=20)] = 5,
+    incident_id: str | None = None,
+    commodity: str | None = None,
+    temp_mean_7d: WeatherQ = None,
+    precip_30d: WeatherQ = None,
+    freeze_thaw_30d: WeatherQ = None,
+    snow_on_ground_d0: WeatherQ = None,
+) -> dict[str, Any]:
+    """Most similar past incidents (strictly before the reference date)."""
+    with _db_or_503() as conn:
+        if incident_id:
+            out = similar_to_incident(conn, incident_id, k)
+            if "error" in out:
+                raise HTTPException(status_code=404, detail=out["error"])
+            return out
+        if lat is None or lon is None:
+            raise HTTPException(
+                status_code=422, detail="give lat and lon, or incident_id"
+            )
+        weather = {
+            "temp_mean_7d": temp_mean_7d,
+            "precip_30d": precip_30d,
+            "freeze_thaw_30d": freeze_thaw_30d,
+            "snow_on_ground_d0": snow_on_ground_d0,
+        }
+        return find_similar(
+            conn,
+            lat=lat,
+            lon=lon,
+            when=date or alberta_today(),
+            weather=weather,
+            commodity=commodity,
+            k=k,
+        )
+
+
+@router.get("/readiness")
+def readiness_route(
+    lat: LatQ = None,
+    lon: LonQ = None,
+    corridor: str | None = None,
+    start: dt.date | None = None,
+    operator_group: str | None = None,
+) -> dict[str, Any]:
+    """Next-7-day readiness: forecast mix, recommended crews, evidence, weather context."""
+    with _db_or_503() as conn:
+        la, lo = _point_or_404(conn, lat, lon, corridor)
+        return readiness(
+            conn,
+            lat=la,
+            lon=lo,
+            start=start or alberta_today(),
+            operator_group=operator_group,
+        )
+
+
+@router.get("/model/info")
+def model_info_route() -> dict[str, Any]:
+    """'About this model': held-out performance for Canada and Alberta, plainly."""
+    info = model_info()
+    if "error" in info:
+        raise HTTPException(status_code=503, detail=info["error"])
+    return info
+
+
+@router.get("/insights/washout")
+def washout_route() -> dict[str, Any]:
+    """Observed post-2022 washout pattern in Alberta (not a model forecast)."""
+    with _db_or_503() as conn:
+        return washout_insight(conn)
+
+
+@router.get("/agent/status")
+def agent_status() -> dict[str, Any]:
+    """Whether the AI briefing/chat is available (no key = disabled, app still works)."""
+    return {**llm.status(), "usage": usage_summary()}
+
+
+@router.get("/agent/usage")
+def agent_usage() -> dict[str, Any]:
+    """Token usage and estimated spend from logs/agent_usage.jsonl (dev-console counter)."""
+    return usage_summary()
+
+
+@router.post("/briefing")
+def briefing(body: BriefingRequest) -> dict[str, Any]:
+    """Readiness briefing written by the agent; every number comes from tool results."""
+    if not llm.status()["available"]:
+        return {**UNAVAILABLE, "reason": llm.status()["reason"]}
+    future = _AGENT_POOL.submit(
+        run_briefing,
+        latitude=body.latitude,
+        longitude=body.longitude,
+        corridor=body.corridor,
+        start=body.start.isoformat() if body.start else None,
+        operator_group=body.operator_group,
+    )
+    try:
+        result = future.result(timeout=AGENT_TIMEOUT_S)
+    except FuturesTimeout:
+        return {**UNAVAILABLE, "reason": "The briefing timed out."}
+    result["tool_calls"] = [
+        {"name": c.get("name"), "input": c.get("input", {})}
+        for c in result.get("tool_calls", [])
+    ]
+    return result
+
+
+@router.get("/corridors")
+def corridors_route() -> list[dict[str, Any]]:
+    """Ranking corridors with centroids (area search)."""
+    with _db_or_503() as conn:
+        return mapdata.corridors(conn)
+
+
+@router.get("/map/incidents")
+def map_incidents() -> dict[str, Any]:
+    """All incidents as GeoJSON points, coloured by hazard group."""
+    with _db_or_503() as conn:
+        return mapdata.incident_points(conn)
+
+
+@router.get("/map/incidents/{incident_number}")
+def map_incident(incident_number: str) -> dict[str, Any]:
+    """One incident for the map popup, cause codes in plain English."""
+    with _db_or_503() as conn:
+        detail = mapdata.incident_detail(conn, incident_number)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Unknown incident")
+    return detail
+
+
+@router.get("/map/crossings")
+def map_crossings() -> dict[str, Any]:
+    """Pipeline–waterway crossings (display only; empty if not built)."""
+    with _db_or_503() as conn:
+        return mapdata.waterway_crossings(conn)
+
+
+@router.get("/map/pipelines")
+def map_pipelines() -> dict[str, Any]:
+    """CER pipeline systems (simplified) as GeoJSON, display only."""
+    with _db_or_503() as conn:
+        return mapdata.pipelines(conn)

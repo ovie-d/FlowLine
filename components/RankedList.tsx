@@ -42,38 +42,31 @@ export function RankedList({
 
   return (
     <section
-      className="flex min-h-0 min-w-0 flex-col rounded-xl border border-[#E3E3DE] bg-white"
-      style={{
-        flex: "1 1 auto",
-        minHeight: 0,
-        height: "100%",
-        padding: 16,
-        boxSizing: "border-box",
-        overflow: "hidden",
-      }}
+      className="flex min-h-0 min-w-0 flex-col rounded-xl border border-border bg-panel"
+      style={{ padding: 16, boxSizing: "border-box" }}
     >
       {/* Card header — fixed */}
       <div
         className="mb-2 flex flex-wrap items-baseline justify-between gap-3"
         style={{ flex: "0 0 auto" }}
       >
-        <div className="text-[15px] font-semibold text-[#15171A]">
+        <div className="text-[15px] font-semibold text-fg">
           Inspection priority · top 5 of 15
         </div>
         <div className="flex flex-wrap items-center gap-3.5">
-          <span className="text-[12px] text-[#5A5F66]">
+          <span className="text-[12px] text-muted">
             Move = change vs count-only rank
           </span>
           <a
             href={`${process.env.NEXT_PUBLIC_API_URL}/ranking.csv?high=${high}`}
-            className="inline-flex items-center gap-[5px] rounded-[5px] border border-[#DCDCD7] bg-white px-2 text-[12px] font-medium text-[#15171A]"
+            className="inline-flex items-center gap-[5px] rounded-[5px] border border-border bg-panel px-2 text-[12px] font-medium text-fg"
             style={{ minHeight: 26 }}
           >
             <svg width="12" height="12" viewBox="0 0 14 14" aria-hidden>
               <path
                 d="M7 2v7M4 6.5L7 9.5 10 6.5M2.5 12h9"
                 fill="none"
-                stroke="#15171A"
+                stroke="var(--text)"
                 strokeWidth="1.6"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -90,7 +83,7 @@ export function RankedList({
       >
         {/* Column header — fixed */}
         <div
-          className="grid min-w-[600px] gap-3 border-b border-[#ECECE7] px-2.5 py-2 text-[12px] text-[#5A5F66]"
+          className="grid min-w-[600px] gap-3 border-b border-border px-2.5 py-2 text-[12px] text-muted"
           style={{ gridTemplateColumns: COL, flex: "0 0 auto" }}
         >
           <span>#</span>
@@ -100,11 +93,8 @@ export function RankedList({
           <span>Agent draft</span>
         </div>
 
-        {/* Rows — scroll */}
-        <div
-          className="min-h-0"
-          style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}
-        >
+        {/* Rows */}
+        <div>
           <div className="flex min-w-[600px] flex-col">
             {visible.map((row) => (
               <RankRow
@@ -123,7 +113,7 @@ export function RankedList({
                 type="button"
                 onClick={onToggleExpanded}
                 aria-expanded={expanded}
-                className="flex w-full items-center justify-between gap-3 border-b border-[#F0F0EC] bg-[#FAFAF8] px-2.5 py-3 text-left text-[#15171A]"
+                className="flex w-full items-center justify-between gap-3 border-b border-panel-2 bg-panel-2 px-2.5 py-3 text-left text-fg"
               >
                 <span className="flex flex-wrap items-center gap-2.5">
                   <svg
@@ -139,7 +129,7 @@ export function RankedList({
                     <path
                       d="M3 5l4 4 4-4"
                       fill="none"
-                      stroke="#15171A"
+                      stroke="var(--text)"
                       strokeWidth="1.8"
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -148,12 +138,12 @@ export function RankedList({
                   <span className="text-[14px] font-semibold">
                     {expanded ? "Hide ranks 6–15" : "Show ranks 6–15"}
                   </span>
-                  <span className="text-[13px] text-[#5A5F66]">
+                  <span className="text-[13px] text-muted">
                     {collapsedSummary}
                   </span>
                 </span>
                 {thinCount > 0 && (
-                  <span className="whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] font-semibold text-[#8A2E08] bg-[#FDEEE3]">
+                  <span className="whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] font-semibold text-warn bg-thin-bg">
                     {thinCount} high risk, low evidence base
                   </span>
                 )}
@@ -194,11 +184,11 @@ function RankRow({
       <button
         type="button"
         onClick={onSelect}
-        className="grid w-full items-center gap-3 border-b border-[#F0F0EC] px-2.5 py-2.5 text-left text-[#15171A]"
+        className="grid w-full items-center gap-3 border-b border-panel-2 px-2.5 py-2.5 text-left text-fg"
         style={{
           gridTemplateColumns: COL,
-          background: selected ? "#F1F4FD" : "#FFFFFF",
-          boxShadow: selected ? "inset 3px 0 0 #1D4ED8" : undefined,
+          background: selected ? "var(--panel-2)" : "var(--panel)",
+          boxShadow: selected ? "inset 3px 0 0 var(--accent)" : undefined,
         }}
       >
         <span className="font-mono text-[14px] font-semibold">{row.rank}</span>
@@ -207,18 +197,18 @@ function RankRow({
           <span className="flex flex-wrap items-center gap-2">
             <span className="text-[15px] font-semibold">{row.corridor}</span>
             {thin && (
-              <span className="rounded px-1.5 py-0.5 text-[11px] font-semibold text-[#8A2E08] bg-[#FDEEE3]">
+              <span className="rounded px-1.5 py-0.5 text-[11px] font-semibold text-warn bg-thin-bg">
                 High risk, low evidence base
               </span>
             )}
           </span>
-          <span className="text-[12px] leading-[1.4] text-[#5A5F66]">
+          <span className="text-[12px] leading-[1.4] text-muted">
             {draft?.reason ?? "—"}
           </span>
         </span>
 
         <span className="flex items-center gap-2">
-          <span className="block h-1.5 flex-1 overflow-hidden rounded-[3px] bg-[#EFEFEB]">
+          <span className="block h-1.5 flex-1 overflow-hidden rounded-[3px] bg-border">
             <span
               className="block h-full"
               style={{ width: `${width}%`, background: bar }}
@@ -250,14 +240,14 @@ function ActionBadge({
   text: string;
 }) {
   if (!action) {
-    return <span className="text-[12px] text-[#6B6F75]">—</span>;
+    return <span className="text-[12px] text-muted">—</span>;
   }
   const style =
     action === "escalate"
-      ? { color: "#A8370A", background: "#FBE9DF" }
+      ? { color: "var(--critical)", background: "var(--thin-bg)" }
       : action === "inspect"
-        ? { color: "#1E3A8A", background: "#E8EEFC" }
-        : { color: "#5A5F66", background: "#EFEFEB" };
+        ? { color: "var(--accent)", background: "var(--panel-2)" }
+        : { color: "var(--muted)", background: "var(--border)" };
   return (
     <span
       title="Agent draft · P1 = act first · P2 = regular cycle · P3 = monitor. Approve in the agent panel."

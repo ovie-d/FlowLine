@@ -1,0 +1,89 @@
+{
+  "columns": [
+    "latitude",
+    "longitude",
+    "doy_sin",
+    "doy_cos",
+    "dist_pipeline_km",
+    "province",
+    "operator_group",
+    "commodity",
+    "ah_n_prior",
+    "ah_n_sites",
+    "ah_n_known",
+    "ah_n_known_sites",
+    "ah_same_site_n",
+    "ah_days_since_last",
+    "ah_mix_corrosion_cracking",
+    "ah_mix_equipment_failure",
+    "ah_mix_incorrect_operation",
+    "ah_mix_third_party_damage",
+    "ah_mix_geotechnical",
+    "ah_mix_natural_forces_weather",
+    "ah_mix_construction_material_defect",
+    "ah_mix_fire_ignition"
+  ],
+  "categories": {
+    "province": [
+      "Alberta",
+      "British Columbia",
+      "Manitoba",
+      "New Brunswick",
+      "Northwest Territories",
+      "Nova Scotia",
+      "Ontario",
+      "Quebec",
+      "Saskatchewan"
+    ],
+    "operator_group": [
+      "Alliance",
+      "Brunswick",
+      "Cochin",
+      "Enbridge",
+      "Express",
+      "Foothills",
+      "Keystone",
+      "Kingston Midstream",
+      "M&NP",
+      "Many Islands",
+      "Montreal Pipe Line",
+      "NGTL",
+      "Other operator",
+      "Plains Midstream",
+      "TC Mainline",
+      "TQM",
+      "Trans Mountain",
+      "Trans-Northern",
+      "Westcoast"
+    ],
+    "commodity": [
+      "gas",
+      "liquid",
+      "unknown"
+    ]
+  },
+  "priors": [
+    0.11568123393316196,
+    0.26940874035989715,
+    0.23136246786632392,
+    0.03547557840616967,
+    0.1326478149100257,
+    0.06889460154241646,
+    0.08894601542416453,
+    0.05758354755784062
+  ],
+  "classes": [
+    "corrosion_cracking",
+    "equipment_failure",
+    "incorrect_operation",
+    "third_party_damage",
+    "geotechnical",
+    "natural_forces_weather",
+    "construction_material_defect",
+    "fire_ignition"
+  ],
+  "rounds": 62,
+  "n_train": 1937,
+  "trained_through": "2026",
+  "trained_at": "2026-10-05T16:39:20+00:00"
+}

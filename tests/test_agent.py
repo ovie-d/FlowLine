@@ -154,7 +154,7 @@ def test_r1_escalates_when_n_high_ge_threshold():
 
 
 def test_dispatch_all_six_tools(decisions_file: Path):
-    assert set(TOOL_FUNCTIONS) == {
+    ranking_tools = {
         "get_ranking",
         "explain_corridor",
         "compare",
@@ -162,6 +162,16 @@ def test_dispatch_all_six_tools(decisions_file: Path):
         "auto_triage",
         "log_decision",
     }
+    forecast_tools = {
+        "get_forecast",
+        "get_similar_incidents",
+        "get_crews_for_hazard",
+        "get_readiness",
+        "get_dispatch_route",
+        "get_washout_insight",
+        "get_model_info",
+    }
+    assert set(TOOL_FUNCTIONS) == ranking_tools | forecast_tools
     ranking = dispatch_tool("get_ranking", {"top": 3})
     assert isinstance(ranking, list) and ranking[0]["corridor"]
 
@@ -198,28 +208,28 @@ def test_dispatch_all_six_tools(decisions_file: Path):
 
 
 def test_run_agent_no_key_returns_error_payload(monkeypatch, tmp_path):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     # Empty/missing .env must not invent a key.
     monkeypatch.setattr("core.agent.loop.load_dotenv", lambda: None)
     out = run_agent("Explain Sherwood Park")
     assert out.get("error") is True
     assert out["tool_calls"] == []
     assert "unavailable" in out["answer"].lower()
-    assert "ranking still works" in out["answer"].lower()
+    assert "ranking still work" in out["answer"].lower()
+    assert "GEMINI_API_KEY" in out["reason"]
 
 
 def test_load_dotenv_sets_missing_keys(tmp_path, monkeypatch):
     from core.env import load_dotenv
 
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("AGENT_MODEL", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
     env_file = tmp_path / ".env"
     env_file.write_text(
-        "ANTHROPIC_API_KEY=sk-test-123\nAGENT_MODEL=claude-haiku-4-5-20251001\n"
+        "GEMINI_API_KEY=test-key-123\nGEMINI_MODEL=gemini-3.5-flash-lite\n"
     )
     load_dotenv(env_file)
-    assert os.environ["ANTHROPIC_API_KEY"] == "sk-test-123"
-    assert os.environ["AGENT_MODEL"] == "claude-haiku-4-5-20251001"
+    assert os.environ["GEMINI_API_KEY"] == "test-key-123"
+    assert os.environ["GEMINI_MODEL"] == "gemini-3.5-flash-lite"
 
 
 def test_log_decision_tool_bad_action_returns_error(decisions_file: Path):
@@ -269,42 +279,30 @@ def test_log_decision_inherits_dashboard_policy(decisions_file: Path):
 
 
 def test_run_agent_passes_policy_into_dispatch(monkeypatch, decisions_file: Path):
-    """Mock Anthropic: one tool_use then end_turn; policy must reach dispatch."""
+    """Mock LLM: one tool call then a text answer; policy must reach dispatch."""
+    from core.agent.llm import LLMResponse
+
     seen: dict[str, object] = {}
 
-    class _Block:
-        type = "tool_use"
-        name = "explain_corridor"
-        id = "tu_1"
-        input = {"name": "Sherwood Park"}
-
-        def model_dump(self, exclude_none=True):
-            return {
-                "type": self.type,
-                "name": self.name,
-                "id": self.id,
-                "input": self.input,
-            }
-
-    class _Response:
-        def __init__(self, stop_reason, content):
-            self.stop_reason = stop_reason
-            self.content = content
-
-    class _Messages:
-        def create(self, **kwargs):
-            seen["system"] = kwargs.get("system", "")
-            if seen.get("calls"):
-                return _Response("end_turn", [])
-            seen["calls"] = 1
-            return _Response("tool_use", [_Block()])
-
     class _Client:
-        messages = _Messages()
+        provider, model = "gemini", "gemini-test"
 
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+        def generate(self, system, history, tools):
+            seen["system"] = system
+            if history[-1]["role"] == "tool":
+                return LLMResponse(
+                    "Sherwood Park is rank 1 with score 48.0.", [], 10, 5
+                )
+            call = {
+                "id": "c1",
+                "name": "explain_corridor",
+                "args": {"name": "Sherwood Park"},
+                "signature": None,
+            }
+            return LLMResponse("", [call], 10, 5)
+
     monkeypatch.setattr("core.agent.loop.load_dotenv", lambda: None)
-    monkeypatch.setattr("core.agent.loop._client", lambda: _Client())
+    monkeypatch.setattr("core.agent.loop._clients", lambda: [_Client()])
 
     real_dispatch = dispatch_tool
 
@@ -320,3 +318,4 @@ def test_run_agent_passes_policy_into_dispatch(monkeypatch, decisions_file: Path
     assert out["tool_calls"]
     assert out["tool_calls"][0]["result"]["rank"] == 1
     assert out["tool_calls"][0]["result"]["score"] == 48.0
+    assert out["numbers_verified"] is True

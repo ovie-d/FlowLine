@@ -1,9 +1,15 @@
 pandas>=2.0
 numpy>=1.24
-anthropic>=0.40
+google-genai>=2.0
 fastapi>=0.110
 uvicorn>=0.27
 pydantic>=2.0
 httpx>=0.27
 pytest>=8.0
 ruff>=0.6
+psycopg[binary]>=3.2
+lightgbm>=4.5
+shap>=0.46
+scikit-learn>=1.5
+matplotlib>=3.9
+osmium>=4.0

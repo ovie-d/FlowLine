@@ -128,7 +128,7 @@ export function SvgCorridorMap({
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex min-h-0 flex-1 items-center justify-center">
         <div
-          className="relative rounded-lg bg-[#FAFAF8]"
+          className="relative rounded-lg bg-panel-2"
           style={{
             aspectRatio: "10 / 15",
             height: "100%",
@@ -147,14 +147,14 @@ export function SvgCorridorMap({
                 <polygon points={AB_POLYGON} />
               </clipPath>
             </defs>
-            <polygon points={AB_POLYGON} fill="#EFEFEB" stroke="none" />
+            <polygon points={AB_POLYGON} fill="var(--border)" stroke="none" />
             <g clipPath={`url(#ab-clip-${clipId})`}>
               {pipelinePaths.map((d, i) => (
                 <path
                   key={i}
                   d={d}
                   fill="none"
-                  stroke="#B9A58F"
+                  stroke="#2DD4BF"
                   strokeWidth={1}
                   strokeOpacity={0.7}
                   vectorEffect="non-scaling-stroke"
@@ -164,14 +164,14 @@ export function SvgCorridorMap({
             <polygon
               points={AB_POLYGON}
               fill="none"
-              stroke="#8F8A80"
+              stroke="var(--muted)"
               strokeWidth="0.6"
               strokeOpacity={0.9}
               strokeDasharray="3 2"
               vectorEffect="non-scaling-stroke"
             />
           </svg>
-          <div className="absolute left-2.5 top-2.5 text-[11px] uppercase tracking-[0.1em] text-[#6B6F75]">
+          <div className="absolute left-2.5 top-2.5 text-[11px] uppercase tracking-[0.1em] text-muted">
             Alberta
           </div>
           {dots.map((row) => {
@@ -206,7 +206,7 @@ export function SvgCorridorMap({
                   })
                 }
                 onBlur={() => setHover(null)}
-                className="absolute p-0 font-mono text-[11px] font-semibold text-white"
+                className="absolute p-0 font-mono text-[11px] font-semibold text-bg"
                 style={{
                   left: `${left.toFixed(2)}%`,
                   top: `${top.toFixed(2)}%`,
@@ -214,10 +214,10 @@ export function SvgCorridorMap({
                   height: size,
                   transform: "translate(-50%, -50%)",
                   borderRadius: "50%",
-                  border: "2px solid #FFFFFF",
+                  border: "2px solid var(--panel)",
                   background: sevColor(row.n_high),
                   boxShadow: isSel
-                    ? "0 0 0 3px #1D4ED8"
+                    ? "0 0 0 3px var(--accent)"
                     : "0 1px 3px rgba(0,0,0,0.25)",
                   cursor: "pointer",
                   zIndex: 100 - row.rank,
@@ -229,13 +229,13 @@ export function SvgCorridorMap({
           })}
           {selectedRow && (
             <div
-              className="pointer-events-none absolute whitespace-nowrap text-[12px] font-medium text-[#15171A]"
+              className="pointer-events-none absolute whitespace-nowrap text-[12px] font-medium text-fg"
               style={{
                 left: `calc(${((((selectedRow.lon as number) + 120) / 10) * 100).toFixed(2)}% + 14px)`,
                 top: `${(((60 - (selectedRow.lat as number)) / 11) * 100).toFixed(2)}%`,
                 transform: "translateY(-50%)",
                 textShadow:
-                  "0 0 2px #fff, 0 0 2px #fff, 1px 0 0 #fff, -1px 0 0 #fff, 0 1px 0 #fff, 0 -1px 0 #fff",
+                  "0 0 2px var(--panel), 0 0 2px var(--panel), 1px 0 0 var(--panel), -1px 0 0 var(--panel), 0 1px 0 var(--panel), 0 -1px 0 var(--panel)",
                 zIndex: 200,
               }}
             >
@@ -244,20 +244,20 @@ export function SvgCorridorMap({
           )}
           {hover && (
             <div
-              className="pointer-events-none absolute rounded bg-white px-2 py-1 shadow"
+              className="pointer-events-none absolute rounded bg-panel px-2 py-1 shadow"
               style={{
                 left: `${hover.left.toFixed(2)}%`,
                 top: `${hover.top.toFixed(2)}%`,
                 transform: "translate(-50%, calc(-100% - 12px))",
                 zIndex: 300,
-                border: "1px solid #E3E3DE",
+                border: "1px solid var(--border)",
               }}
             >
               <div
                 style={{
                   fontSize: 13,
                   fontWeight: 600,
-                  color: "#15171A",
+                  color: "var(--text)",
                   lineHeight: 1.3,
                 }}
               >
@@ -265,7 +265,7 @@ export function SvgCorridorMap({
               </div>
               <div
                 className="font-mono"
-                style={{ fontSize: 12, color: "#5A5F66", marginTop: 2 }}
+                style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}
               >
                 #{hover.rank} · {hover.score.toFixed(1)}
               </div>
@@ -274,7 +274,7 @@ export function SvgCorridorMap({
         </div>
       </div>
       {offlineNote && (
-        <p className="mt-1 text-[11px] text-[#8A8E94]">Offline map view.</p>
+        <p className="mt-1 text-[11px] text-muted">Offline map view.</p>
       )}
     </div>
   );

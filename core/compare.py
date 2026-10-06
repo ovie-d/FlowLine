@@ -155,13 +155,13 @@ def improvement_for(cfg: RiskConfig, top: int = 15) -> dict[str, Any]:
             "serious_captured": int(
                 current_subset["incident_type"].isin(SERIOUS_INCIDENT_TYPES).sum()
             ),
-            "incidents_covered": int(len(current_subset)),
+            "incidents_covered": len(current_subset),
         },
         "baseline": {
             "serious_captured": int(
                 baseline_subset["incident_type"].isin(SERIOUS_INCIDENT_TYPES).sum()
             ),
-            "incidents_covered": int(len(baseline_subset)),
+            "incidents_covered": len(baseline_subset),
         },
     }
 

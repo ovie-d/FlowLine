@@ -1,0 +1,1013 @@
+"""Honest evaluation of the hazard-mix forecast -> docs/MODEL_REPORT.md.
+
+Usage: python -m scripts.evaluate
+Needs the Postgres database loaded (scripts.load_postgres) incl. weather.
+
+- Time split: train on events up to 2021-12-31, test on 2022 onward (national
+  training; results reported for Canada and for Alberta only).
+- Rolling origin: each test year Y in ROLLING_YEARS, trained on years < Y.
+- Baselines: national base rate, province base rate (= Alberta base rate for
+  Alberta), area history only (site-weighted prior mix within 25 km).
+- Ablations: without weather, without area history, without both.
+- 95% bootstrap CIs on every metric; paired bootstrap for model − baseline.
+Nothing is tuned on the test set (see core/model.py).
+Also writes the deployable model (trained on all labelled data) to models/.
+"""
+
+from __future__ import annotations
+
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+from core.env import load_dotenv
+from core.features import (
+    ALL_FEATURES,
+    AREA_FEATURES,
+    FEATURE_GROUPS,
+    WEATHER_CANDIDATES,
+    training_frame,
+)
+from core.metrics import (
+    LOWER_IS_BETTER,
+    METRICS,
+    bootstrap,
+    calibration_bins,
+    confusion,
+    paired_difference,
+    per_class_recall,
+)
+from core.model import HazardModel, class_index, class_priors, train
+from core.pg import connect
+from core.taxonomy import GEOTECHNICAL, HAZARD_LABELS, MODEL_TARGETS
+from core.weather import FEATURE_NAMES as WEATHER_FEATURES
+
+ROOT = Path(__file__).resolve().parent.parent
+REPORT_PATH = ROOT / "docs" / "MODEL_REPORT.md"
+CALIBRATION_PNG = ROOT / "docs" / "model_calibration.png"
+MODEL_PATH = ROOT / "models" / "hazard_forecast"
+
+TRAIN_END_YEAR = 2021
+ROLLING_YEARS = (2020, 2021, 2022, 2023, 2024, 2025)
+PROVINCE_ALPHA = 10.0  # pseudo-sites pulling a province's mix toward national
+AREA_ALPHA = 2.0  # pseudo-sites pulling an area's mix toward national
+LOW_EVIDENCE_SITES = 3  # fewer known prior sites within 25 km = sparse area
+K = len(MODEL_TARGETS)
+
+FULL = "Model (deployed)"
+WITH_WEATHER = "Model + weather (rejected)"
+NO_AREA = "Model − area history"
+NO_OPERATOR = "Model − operator"
+PLACE_ONLY = "Location + area history + season only"
+PLACE_ONLY_FEATURES: tuple[str, ...] = (
+    "latitude",
+    "longitude",
+    "dist_pipeline_km",
+    "doy_sin",
+    "doy_cos",
+    *AREA_FEATURES,
+)
+VARIANTS: dict[str, tuple[str, ...]] = {
+    FULL: ALL_FEATURES,
+    WITH_WEATHER: (*ALL_FEATURES, *WEATHER_CANDIDATES),
+    NO_AREA: tuple(f for f in ALL_FEATURES if f not in AREA_FEATURES),
+    NO_OPERATOR: tuple(f for f in ALL_FEATURES if f != "operator_group"),
+    PLACE_ONLY: PLACE_ONLY_FEATURES,
+}
+# variant -> (change described, meaning when the deployed model is better / worse)
+ABLATION_LABELS: dict[str, tuple[str, str, str]] = {
+    WITH_WEATHER: ("add weather back", "weather hurts", "weather helps"),
+    NO_AREA: ("remove area history", "area history helps", "area history hurts"),
+    NO_OPERATOR: ("remove operator", "operator helps", "operator hurts"),
+    PLACE_ONLY: (
+        "keep only location + area history + season",
+        "operator / province / commodity help",
+        "they hurt",
+    ),
+}
+OPERATOR_FOCUS = "NGTL"
+MIN_SUBGROUP_N = 30  # smaller operator subsets are not reported
+SUMMARY_PATH = ROOT / "models" / "hazard_forecast.eval.json"
+LOWER_CERTAINTY_ABOVE = 0.5
+
+
+INCIDENTS_SQL = """
+SELECT i.incident_number, i.event_date, i.closed_date, i.province, i.is_alberta,
+       i.operator_group, i.commodity, i.latitude, i.longitude, i.site_id,
+       i.hazard_group, i.dist_pipeline_km, {weather}
+FROM incidents i LEFT JOIN incident_weather w USING (incident_number)
+ORDER BY i.event_date, i.incident_number
+"""
+
+
+# ------------------------------------------------------------------ data
+
+
+def load_incidents() -> pd.DataFrame:
+    sql = INCIDENTS_SQL.format(weather=", ".join(f"w.{c}" for c in WEATHER_FEATURES))
+    with connect() as conn:
+        rows = conn.execute(sql).fetchall()
+    df = pd.DataFrame(rows)
+    df["event_date"] = pd.to_datetime(df["event_date"])
+    for c in (*WEATHER_FEATURES, "dist_pipeline_km"):
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+    return df
+
+
+# ------------------------------------------------------------------ baselines
+
+
+def national_baseline(y_train: pd.Series, n: int) -> np.ndarray:
+    return np.tile(class_priors(y_train), (n, 1))
+
+
+def province_baseline(
+    y_train: pd.Series, prov_train: pd.Series, prov_test: pd.Series
+) -> np.ndarray:
+    national = class_priors(y_train)
+    out = np.empty((len(prov_test), K))
+    for i, prov in enumerate(prov_test):
+        counts = np.bincount(class_index(y_train[prov_train == prov]), minlength=K)
+        out[i] = (counts + PROVINCE_ALPHA * national) / (counts.sum() + PROVINCE_ALPHA)
+    return out
+
+
+def area_baseline(y_train: pd.Series, X_test: pd.DataFrame) -> np.ndarray:
+    national = class_priors(y_train)
+    mix = X_test[[f"ah_mix_{c}" for c in MODEL_TARGETS]].to_numpy()
+    sites = X_test["ah_n_known_sites"].to_numpy()[:, None]
+    mix = np.where(np.isnan(mix), 0.0, mix)
+    return (sites * mix + AREA_ALPHA * national) / (sites + AREA_ALPHA)
+
+
+# ------------------------------------------------------------------ fitting
+
+
+def fit_predict(
+    X: pd.DataFrame,
+    y: pd.Series,
+    years: pd.Series,
+    train_mask: pd.Series,
+    test_mask: pd.Series,
+) -> tuple[dict[str, np.ndarray], dict[str, HazardModel]]:
+    """Predictions for every baseline and model variant on the test rows."""
+    Xtr, ytr, Xte = X[train_mask], y[train_mask], X[test_mask]
+    preds = {
+        "Baseline: national base rate": national_baseline(ytr, len(Xte)),
+        "Baseline: province base rate": province_baseline(
+            ytr, Xtr["province"], Xte["province"]
+        ),
+        "Baseline: area history only": area_baseline(ytr, Xte),
+    }
+    models: dict[str, HazardModel] = {}
+    for name, cols in VARIANTS.items():
+        model = train(Xtr, ytr, years[train_mask], list(cols))
+        models[name] = model
+        preds[name] = model.predict_proba(Xte)
+    return preds, models
+
+
+# ------------------------------------------------------------------ formatting
+
+
+def fmt_ci(point: float, lo: float, hi: float, digits: int = 3) -> str:
+    return f"{point:.{digits}f} [{lo:.{digits}f}, {hi:.{digits}f}]"
+
+
+def md_table(header: list[str], rows: list[list[object]]) -> str:
+    lines = ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
+    lines += ["| " + " | ".join(str(v) for v in r) + " |" for r in rows]
+    return "\n".join(lines)
+
+
+def metric_table(preds: dict[str, np.ndarray], y: np.ndarray) -> str:
+    rows = []
+    for name, p in preds.items():
+        rows.append([name, *(fmt_ci(*bootstrap(fn, p, y)) for fn in METRICS.values())])
+    header = ["predictor", "log loss ↓", "Brier ↓", "top-1 acc ↑", "top-3 acc ↑"]
+    return md_table(header, rows)
+
+
+def best_baseline(preds: dict[str, np.ndarray], y: np.ndarray) -> str:
+    base = {k: v for k, v in preds.items() if k.startswith("Baseline")}
+    return min(base, key=lambda k: METRICS["log_loss"](base[k], y))
+
+
+def diff_table(preds: dict[str, np.ndarray], y: np.ndarray, ref: str) -> str:
+    rows = []
+    for name, p in preds.items():
+        if name == ref:
+            continue
+        cells = []
+        for metric, fn in METRICS.items():
+            d, lo, hi = paired_difference(fn, p, preds[ref], y)
+            better = (hi < 0) if metric in LOWER_IS_BETTER else (lo > 0)
+            worse = (lo > 0) if metric in LOWER_IS_BETTER else (hi < 0)
+            tag = " ✅" if better else (" ❌" if worse else "")
+            cells.append(f"{d:+.3f} [{lo:+.3f}, {hi:+.3f}]{tag}")
+        rows.append([name, *cells])
+    header = ["predictor − " + ref, "Δ log loss", "Δ Brier", "Δ top-1", "Δ top-3"]
+    note = (
+        "✅ = better than the reference with the 95% CI excluding zero; "
+        "❌ = worse with the CI excluding zero; blank = not distinguishable."
+    )
+    return md_table(header, rows) + "\n\n" + note
+
+
+def recall_table(preds: dict[str, np.ndarray], y: np.ndarray, names: list[str]) -> str:
+    counts = np.bincount(y, minlength=K)
+    rows = []
+    for k, cls in enumerate(MODEL_TARGETS):
+        recalls = [per_class_recall(preds[n], y, K)[k] for n in names]
+        rows.append(
+            [
+                HAZARD_LABELS[cls],
+                int(counts[k]),
+                *("—" if np.isnan(r) else f"{r:.2f}" for r in recalls),
+            ]
+        )
+    return md_table(["hazard group", "n test", *names], rows)
+
+
+def confusion_table(p: np.ndarray, y: np.ndarray) -> str:
+    m = confusion(p, y, K)
+    short = [c.split("_")[0][:6] for c in MODEL_TARGETS]
+    rows = [[HAZARD_LABELS[c], *m[i]] for i, c in enumerate(MODEL_TARGETS)]
+    return md_table(["actual ↓ / predicted →", *short], rows)
+
+
+# ------------------------------------------------------------------ sections
+
+
+def section_split(
+    X: pd.DataFrame, y: pd.Series, years: pd.Series, ab: pd.Series
+) -> tuple[str, dict[str, np.ndarray], dict[str, HazardModel], pd.Series]:
+    train_mask = years <= TRAIN_END_YEAR
+    test_mask = years > TRAIN_END_YEAR
+    preds, models = fit_predict(X, y, years, train_mask, test_mask)
+    yte = class_index(y[test_mask])
+    ab_te = ab[test_mask].to_numpy()
+    preds_ab = {k: v[ab_te] for k, v in preds.items()}
+    ref_nat, ref_ab = best_baseline(preds, yte), best_baseline(preds_ab, yte[ab_te])
+    text = "\n\n".join(
+        [
+            "## 2. Main result — time split",
+            (
+                f"Train: events ≤ {TRAIN_END_YEAR} ({int(train_mask.sum())} incidents, "
+                f"national). Test: events ≥ {TRAIN_END_YEAR + 1} ({int(test_mask.sum())} "
+                f"national, {int(ab_te.sum())} Alberta). Point estimate with 95% bootstrap CI "
+                "(1,000 resamples of test incidents)."
+            ),
+            (
+                "Baselines: *national base rate* = training-period hazard mix for every "
+                "incident; *province base rate* = the incident's own province mix (for "
+                "Alberta this is the Alberta base rate), smoothed toward national with "
+                f"{PROVINCE_ALPHA:.0f} pseudo-incidents; *area history only* = site-weighted "
+                f"prior mix within 25 km, smoothed with {AREA_ALPHA:.0f} pseudo-sites."
+            ),
+            "### Canada",
+            metric_table(preds, yte),
+            f"Paired differences vs the best baseline (**{ref_nat}**):",
+            diff_table(preds, yte, ref_nat),
+            "### Alberta only (same models, Alberta test incidents)",
+            metric_table(preds_ab, yte[ab_te]),
+            f"Paired differences vs the best Alberta baseline (**{ref_ab}**):",
+            diff_table(preds_ab, yte[ab_te], ref_ab),
+        ]
+    )
+    return text, preds, models, test_mask
+
+
+def section_rolling(
+    X: pd.DataFrame, y: pd.Series, years: pd.Series, ab: pd.Series
+) -> tuple[str, list[dict[str, object]]]:
+    rows, data = [], []
+    for year in ROLLING_YEARS:
+        train_mask, test_mask = years < year, years == year
+        if test_mask.sum() == 0:
+            continue
+        Xtr, ytr, Xte = X[train_mask], y[train_mask], X[test_mask]
+        yte = class_index(y[test_mask])
+        model = train(Xtr, ytr, years[train_mask], list(ALL_FEATURES))
+        p_model = model.predict_proba(Xte)
+        p_nat = national_baseline(ytr, len(Xte))
+        p_area = area_baseline(ytr, Xte)
+        ab_te = ab[test_mask].to_numpy()
+        d, lo, hi = paired_difference(METRICS["log_loss"], p_model, p_nat, yte)
+        data.append(
+            {
+                "year": year,
+                "n": int(test_mask.sum()),
+                "n_alberta": int(ab_te.sum()),
+                "model_log_loss": round(METRICS["log_loss"](p_model, yte), 3),
+                "national_base_log_loss": round(METRICS["log_loss"](p_nat, yte), 3),
+                "delta_vs_national": [round(d, 3), round(lo, 3), round(hi, 3)],
+            }
+        )
+        rows.append(
+            [
+                year,
+                int(test_mask.sum()),
+                int(ab_te.sum()),
+                fmt_ci(*bootstrap(METRICS["log_loss"], p_model, yte)),
+                f"{METRICS['log_loss'](p_nat, yte):.3f}",
+                f"{METRICS['log_loss'](p_area, yte):.3f}",
+                f"{d:+.3f} [{lo:+.3f}, {hi:+.3f}]",
+                f"{METRICS['top3'](p_model, yte):.2f} / {METRICS['top3'](p_nat, yte):.2f}",
+                f"{METRICS['log_loss'](p_model[ab_te], yte[ab_te]):.3f} / "
+                f"{METRICS['log_loss'](p_nat[ab_te], yte[ab_te]):.3f}"
+                if ab_te.any()
+                else "—",
+            ]
+        )
+    header = [
+        "test year",
+        "n",
+        "n AB",
+        "model log loss [CI]",
+        "national base",
+        "area history",
+        "Δ model − national [CI]",
+        "top-3 model / national",
+        "AB log loss model / national",
+    ]
+    text = "\n\n".join(
+        [
+            "## 3. Rolling-origin check",
+            (
+                "Each row trains on all years before the test year (national) and tests on that "
+                "year only. Early stopping uses the last training year, never the test year."
+            ),
+            md_table(header, rows),
+        ]
+    )
+    return text, data
+
+
+def ablation_rows(
+    preds: dict[str, np.ndarray], y: np.ndarray, ab: np.ndarray
+) -> list[dict[str, object]]:
+    """Deployed model vs each variant, Canada and Alberta (paired bootstrap)."""
+    out = []
+    for name, (change, deployed_better, variant_better) in ABLATION_LABELS.items():
+        for region, mask in (("Canada", np.ones_like(ab)), ("Alberta", ab)):
+            d, lo, hi = paired_difference(
+                METRICS["log_loss"], preds[FULL][mask], preds[name][mask], y[mask]
+            )
+            # Verdicts use the reported (3-decimal) bounds, so text and tables agree.
+            d, lo, hi = round(d, 3), round(lo, 3), round(hi, 3)
+            verdict = (
+                deployed_better
+                if hi < 0
+                else (variant_better if lo > 0 else "no measurable difference")
+            )
+            out.append(
+                {
+                    "change": change,
+                    "region": region,
+                    "delta": d,
+                    "lo": lo,
+                    "hi": hi,
+                    "verdict": verdict,
+                }
+            )
+    return out
+
+
+def section_ablation(
+    preds: dict[str, np.ndarray], y: np.ndarray, ab: np.ndarray
+) -> str:
+    rows = [
+        [
+            r["change"],
+            r["region"],
+            f"{r['delta']:+.3f} [{r['lo']:+.3f}, {r['hi']:+.3f}]",
+            r["verdict"],
+        ]
+        for r in ablation_rows(preds, y, ab)
+    ]
+    return "\n\n".join(
+        [
+            "## 4. Ablation — do weather and area history help?",
+            (
+                "Δ = log loss of the deployed model minus the variant on the same test "
+                "incidents (negative = the deployed model is better)."
+            ),
+            md_table(
+                ["change", "test set", "Δ log loss deployed − variant [CI]", "verdict"],
+                rows,
+            ),
+            (
+                "**Decision (2026-10-05):** weather made no measurable difference in the "
+                "previous evaluation, so it was removed from the forecast model. Weather "
+                "stays in the database, the similar-incident search, briefings and as a "
+                "context panel; the forecast has no weather override sliders. The variant "
+                "above re-checks that decision on every run."
+            ),
+            (
+                "**Narrative features:** not available. Public CER data has cause codes only, "
+                "and embedding those would encode the label (decision A, Phase 2). The pgvector "
+                "narrative path is ready for operator narratives in a pilot."
+            ),
+        ]
+    )
+
+
+def operator_rows(
+    preds: dict[str, np.ndarray], y: np.ndarray, X_test: pd.DataFrame, ab: np.ndarray
+) -> list[dict[str, object]]:
+    """Deployed vs operator-free variants on Canada, Alberta, NGTL and other operators."""
+    op = X_test["operator_group"].to_numpy()
+    groups = {
+        "Canada": np.ones(len(y), dtype=bool),
+        "Alberta": ab,
+        f"{OPERATOR_FOCUS} only": op == OPERATOR_FOCUS,
+        f"All except {OPERATOR_FOCUS}": op != OPERATOR_FOCUS,
+    }
+    out = []
+    for label, mask in groups.items():
+        if mask.sum() < MIN_SUBGROUP_N:
+            out.append({"subset": label, "n": int(mask.sum()), "skipped": True})
+            continue
+        sub = {k: v[mask] for k, v in preds.items()}
+        row: dict[str, object] = {
+            "subset": label,
+            "n": int(mask.sum()),
+            "skipped": False,
+        }
+        for name in (FULL, NO_OPERATOR, PLACE_ONLY):
+            row[name] = [
+                round(v, 3) for v in bootstrap(METRICS["log_loss"], sub[name], y[mask])
+            ]
+        ref = best_baseline(sub, y[mask])
+        row["best_baseline"] = ref
+        row["best_baseline_log_loss"] = round(METRICS["log_loss"](sub[ref], y[mask]), 3)
+        for name in (NO_OPERATOR, PLACE_ONLY):
+            d, lo, hi = paired_difference(
+                METRICS["log_loss"], sub[FULL], sub[name], y[mask]
+            )
+            row[f"delta_{name}"] = [round(d, 3), round(lo, 3), round(hi, 3)]
+        d, lo, hi = paired_difference(
+            METRICS["log_loss"], sub[PLACE_ONLY], sub[ref], y[mask]
+        )
+        row["place_only_vs_baseline"] = [round(d, 3), round(lo, 3), round(hi, 3)]
+        d, lo, hi = paired_difference(METRICS["log_loss"], sub[FULL], sub[ref], y[mask])
+        row["deployed_vs_baseline"] = [round(d, 3), round(lo, 3), round(hi, 3)]
+        out.append(row)
+    return out
+
+
+def _ci_text(v: list[float]) -> str:
+    return f"{v[0]:+.3f} [{v[1]:+.3f}, {v[2]:+.3f}]"
+
+
+def operator_note(rows: list[dict[str, object]]) -> str:
+    """Plain-language answer, built from the computed intervals."""
+    canada = rows[0]
+    d_op, d_place, vs_base = (
+        canada[f"delta_{NO_OPERATOR}"],
+        canada[f"delta_{PLACE_ONLY}"],
+        canada["place_only_vs_baseline"],
+    )
+    op_matters = d_op[2] < 0
+    place_beats = vs_base[2] < 0
+    parts = [
+        (
+            "**Is the model learning hazards or each operator's reporting habits?** "
+            "The data cannot fully separate the two: an operator's incident mix reflects both "
+            "what it runs (compressor stations vs liquid terminals vs line pipe) and how it "
+            "reports and codes causes. What the numbers do show:"
+        )
+    ]
+    parts.append(
+        f"- Removing the operator {'makes the forecast measurably worse' if op_matters else 'makes no measurable difference'} "
+        f"(Canada Δ {_ci_text(d_op)})."
+    )
+    parts.append(
+        "- A model with **no operator, province or commodity** — only where, when in the "
+        "year, and what happened nearby before — "
+        + (
+            "still beats the best simple baseline"
+            if place_beats
+            else "does not beat the best simple baseline"
+        )
+        + f" (Canada Δ vs baseline {_ci_text(vs_base)}); it is "
+        f"{'measurably worse than' if d_place[2] < 0 else 'not measurably different from'} "
+        f"the deployed model (Δ {_ci_text(d_place)})."
+    )
+    if op_matters and place_beats:
+        parts.append(
+            "- Reading: part of the skill comes from place and local history alone, which is "
+            "hard to explain as reporting habit; the extra skill from the operator may be "
+            "asset type, reporting practice, or both. Treat operator-driven differences in a "
+            "forecast as *“this operator's history looks like this”*, not as a physical cause."
+        )
+    elif op_matters:
+        parts.append(
+            "- Reading: most of the skill depends on the operator. That is consistent with "
+            "learning each operator's reporting and coding habits as much as physical hazards; "
+            "forecasts should be presented as operator-history patterns."
+        )
+    else:
+        parts.append(
+            "- Reading: the operator adds little beyond place and local history, so the "
+            "forecast is not mainly an operator reporting signal."
+        )
+    for r in rows[1:]:
+        if r["skipped"]:
+            parts.append(
+                f"- {r['subset']}: too few test incidents (n = {r['n']}) to report."
+            )
+            continue
+        d = r[f"delta_{NO_OPERATOR}"]
+        verdict = (
+            "operator helps"
+            if d[2] < 0
+            else "operator hurts"
+            if d[1] > 0
+            else "no measurable difference from removing the operator"
+        )
+        vb = r["deployed_vs_baseline"]
+        base_verdict = (
+            "beats"
+            if vb[2] < 0
+            else "is worse than"
+            if vb[1] > 0
+            else "is not distinguishable from"
+        )
+        parts.append(
+            f"- {r['subset']} (n = {r['n']}): {verdict} (Δ {_ci_text(d)}); the deployed model "
+            f"{base_verdict} the best baseline here "
+            f"({r['best_baseline'].replace('Baseline: ', '')}, Δ {_ci_text(vb)})."
+        )
+    return "\n".join(parts)
+
+
+def section_operator(
+    preds: dict[str, np.ndarray], y: np.ndarray, X_test: pd.DataFrame, ab: np.ndarray
+) -> tuple[str, list[dict[str, object]]]:
+    rows = operator_rows(preds, y, X_test, ab)
+    table = []
+    for r in rows:
+        if r["skipped"]:
+            table.append(
+                [r["subset"], r["n"], f"too few (< {MIN_SUBGROUP_N})", "", "", "", ""]
+            )
+            continue
+        table.append(
+            [
+                r["subset"],
+                r["n"],
+                fmt_ci(*r[FULL]),
+                fmt_ci(*r[NO_OPERATOR]),
+                fmt_ci(*r[PLACE_ONLY]),
+                f"{r['best_baseline_log_loss']:.3f} ({r['best_baseline'].replace('Baseline: ', '')})",
+                _ci_text(r[f"delta_{NO_OPERATOR}"]),
+            ]
+        )
+    text = "\n\n".join(
+        [
+            "## 4b. Operator dependence",
+            (
+                "Operator is the strongest input (§7). Log loss with 95% CI on the 2022+ test set; "
+                "the last column is deployed − without operator (negative = operator helps). "
+                "The deployed model is unchanged by this analysis."
+            ),
+            md_table(
+                [
+                    "test subset",
+                    "n",
+                    "deployed",
+                    "− operator",
+                    "location + area history + season",
+                    "best baseline",
+                    "Δ deployed − (− operator)",
+                ],
+                table,
+            ),
+            operator_note(rows),
+        ]
+    )
+    return text, rows
+
+
+def mix_table(preds: dict[str, np.ndarray], y: np.ndarray, names: list[str]) -> str:
+    """Mean predicted share per class vs realised share (what the UI shows)."""
+    realised = np.bincount(y, minlength=K) / max(len(y), 1)
+    rows = [
+        [
+            HAZARD_LABELS[c],
+            f"{realised[k]:.1%}",
+            *(f"{preds[n][:, k].mean():.1%}" for n in names),
+        ]
+        for k, c in enumerate(MODEL_TARGETS)
+    ]
+    return md_table(["hazard group", "realised share", *names], rows)
+
+
+def section_failures(
+    preds: dict[str, np.ndarray], y: np.ndarray, X_test: pd.DataFrame, ab: np.ndarray
+) -> str:
+    full, nat = preds[FULL], preds["Baseline: national base rate"]
+    per_prov = []
+    for prov, idx in X_test.groupby("province").indices.items():
+        per_prov.append(
+            [
+                prov,
+                len(idx),
+                f"{METRICS['log_loss'](full[idx], y[idx]):.3f}",
+                f"{METRICS['log_loss'](nat[idx], y[idx]):.3f}",
+            ]
+        )
+    sparse = (X_test["ah_n_known_sites"] < LOW_EVIDENCE_SITES).to_numpy()
+    rows_sparse = []
+    for label, m in (
+        ("sparse (< 3 known prior sites in 25 km)", sparse),
+        ("dense", ~sparse),
+    ):
+        if m.any():
+            rows_sparse.append(
+                [
+                    label,
+                    int(m.sum()),
+                    f"{METRICS['log_loss'](full[m], y[m]):.3f}",
+                    f"{METRICS['log_loss'](nat[m], y[m]):.3f}",
+                    f"{METRICS['top1'](full[m], y[m]):.2f}",
+                ]
+            )
+    recall = per_class_recall(full, y, K)
+    worst = [
+        HAZARD_LABELS[MODEL_TARGETS[k]]
+        for k in np.argsort(np.nan_to_num(recall, nan=9))[:3]
+    ]
+    return "\n\n".join(
+        [
+            "## 5. Where it fails",
+            f"**Worst classes by recall (full model, Canada):** {', '.join(worst)}.",
+            "### Per-class recall (top-1), Canada",
+            recall_table(
+                preds,
+                y,
+                [FULL, "Baseline: area history only", "Baseline: national base rate"],
+            ),
+            "### Per-class recall (top-1), Alberta",
+            recall_table(
+                {k: v[ab] for k, v in preds.items()},
+                y[ab],
+                [FULL, "Baseline: area history only"],
+            ),
+            (
+                "Top-1 recall is a harsh view of a *mix* forecaster: rare classes are almost "
+                "never the single most likely hazard. The product shows the mix, so the "
+                "next table compares the average forecast mix with what actually happened."
+            ),
+            "### Predicted mix vs realised mix, Alberta test",
+            mix_table(
+                {k: v[ab] for k, v in preds.items()},
+                y[ab],
+                [FULL, "Baseline: national base rate", "Baseline: area history only"],
+            ),
+            "### Confusion matrix (full model, Canada test, top-1)",
+            confusion_table(full, y),
+            "### By province (test)",
+            md_table(
+                ["province", "n", "model log loss", "national base log loss"],
+                sorted(per_prov, key=lambda r: -r[1]),
+            ),
+            "### Sparse vs dense areas (test)",
+            md_table(
+                [
+                    "area",
+                    "n",
+                    "model log loss",
+                    "national base log loss",
+                    "model top-1",
+                ],
+                rows_sparse,
+            ),
+        ]
+    )
+
+
+def section_washout(
+    preds: dict[str, np.ndarray],
+    y: np.ndarray,
+    X_test: pd.DataFrame,
+    ab: np.ndarray,
+    df: pd.DataFrame,
+    years: pd.Series,
+) -> str:
+    g = MODEL_TARGETS.index(GEOTECHNICAL)
+    ab_all = df["is_alberta"].to_numpy(dtype=bool)
+    target = df["hazard_group"].isin(MODEL_TARGETS).to_numpy()
+    yr = df["event_date"].dt.year.to_numpy()
+    shares = []
+    for label, m in (("≤ 2021", yr <= TRAIN_END_YEAR), ("≥ 2022", yr > TRAIN_END_YEAR)):
+        sel = ab_all & target & m
+        geo = (df["hazard_group"] == GEOTECHNICAL).to_numpy() & sel
+        precip = df.loc[geo, "precip_30d"]
+        precip_other = df.loc[sel & ~geo, "precip_30d"]
+        shares.append(
+            [
+                label,
+                int(sel.sum()),
+                f"{geo.sum() / max(sel.sum(), 1):.1%}",
+                f"{precip.median():.1f} (n={precip.notna().sum()})",
+                f"{precip_other.median():.1f} (n={precip_other.notna().sum()})",
+            ]
+        )
+    is_geo = y == g
+    rows = []
+    for name, p in preds.items():
+        rows.append(
+            [
+                name,
+                f"{p[ab, g].mean():.1%}",
+                f"{p[ab & is_geo, g].mean():.1%}" if (ab & is_geo).any() else "—",
+                f"{p[ab & ~is_geo, g].mean():.1%}",
+            ]
+        )
+    actual = (ab & is_geo).sum() / max(ab.sum(), 1)
+    d, lo, hi = paired_difference(
+        lambda p_, y_: float(np.mean(p_[y_ == g, g])) if (y_ == g).any() else 0.0,
+        preds[WITH_WEATHER][ab],
+        preds[FULL][ab],
+        y[ab],
+    )
+    return "\n\n".join(
+        [
+            "## 6. The post-2022 washout shift (Alberta)",
+            (
+                "Alberta's share of geotechnical incidents (mostly washout / erosion on NGTL and "
+                "Trans Mountain lines) rose after 2021. Is it visible in the weather?"
+            ),
+            md_table(
+                [
+                    "period",
+                    "AB target incidents",
+                    "geotechnical share",
+                    "median precip_30d, geotechnical (mm)",
+                    "median precip_30d, other (mm)",
+                ],
+                shares,
+            ),
+            f"Actual geotechnical share in the Alberta test set: **{actual:.1%}**.",
+            md_table(
+                [
+                    "predictor",
+                    "mean p(geotech), all AB test",
+                    "mean p(geotech) when it WAS geotech",
+                    "mean p(geotech) otherwise",
+                ],
+                rows,
+            ),
+            (
+                f"Weather's contribution to p(geotech) on actual Alberta geotechnical cases "
+                f"(with weather − deployed): **{d:+.1%}** [95% CI {lo:+.1%}, {hi:+.1%}]."
+            ),
+        ]
+    )
+
+
+def section_shap(model: HazardModel, X_test: pd.DataFrame) -> str:
+    sv = model.shap_values(X_test)[:, :, :-1]  # drop bias column
+    overall = np.abs(sv).mean(axis=(0, 1))
+    order = np.argsort(-overall)[:15]
+    group_of = {f: g for g, fs in FEATURE_GROUPS.items() for f in fs}
+    rows = [
+        [model.columns[i], group_of.get(model.columns[i], "—"), f"{overall[i]:.3f}"]
+        for i in order
+    ]
+    return "\n\n".join(
+        [
+            "## 7. What drives the forecast (SHAP, full model, test set)",
+            (
+                "Mean |SHAP| over test incidents and classes (raw-margin scale). Per-forecast "
+                "top drivers are returned by the API in plain words."
+            ),
+            md_table(["feature", "group", "mean abs SHAP"], rows),
+        ]
+    )
+
+
+def plot_calibration(preds: dict[str, np.ndarray], y: np.ndarray) -> None:
+    fig, ax = plt.subplots(figsize=(5.5, 5))
+    ax.plot([0, 1], [0, 1], color="#8CA0C3", lw=1, ls="--", label="perfect")
+    for name, color in (
+        (FULL, "#F5A524"),
+        ("Baseline: area history only", "#2DD4BF"),
+        ("Baseline: national base rate", "#6B7FA8"),
+    ):
+        bins = calibration_bins(preds[name], y)
+        ax.plot(
+            [b[0] for b in bins],
+            [b[1] for b in bins],
+            marker="o",
+            color=color,
+            label=name,
+        )
+    ax.set_xlabel("predicted probability (one-vs-rest)")
+    ax.set_ylabel("observed frequency")
+    ax.set_title("Calibration — Canada test (≥ 2022)")
+    ax.legend(fontsize=8)
+    fig.tight_layout()
+    fig.savefig(CALIBRATION_PNG, dpi=130)
+    plt.close(fig)
+
+
+def section_data(df: pd.DataFrame, X: pd.DataFrame) -> str:
+    wx = X[list(WEATHER_CANDIDATES)].notna().all(axis=1).mean()
+    temp = X["temp_mean_7d"].notna().mean()
+    return "\n\n".join(
+        [
+            "## 1. Data and features",
+            (
+                f"- Incidents in the database: {len(df):,}; forecast-target incidents: {len(X):,} "
+                "(Other / unknown and Undetermined are excluded from the target)."
+            ),
+            f"- Deployed model features ({len(ALL_FEATURES)}): "
+            + "; ".join(f"**{g}** ({len(fs)})" for g, fs in FEATURE_GROUPS.items())
+            + f". Weather ({len(WEATHER_CANDIDATES)} features) is evaluated as a rejected "
+            "variant only.",
+            (
+                f"- Weather coverage on target incidents (variant only): temperature "
+                f"{temp:.1%}, all weather features {wx:.1%} (missing stays missing)."
+            ),
+            (
+                "- Area history: incidents strictly before the event date within 25 km; the "
+                "hazard mix uses only incidents **closed** before the event date (cause known "
+                "then), each site weighted once (sites = 1 km leader clusters)."
+            ),
+            "- Leakage guards are enforced in code and tested (`tests/test_features.py`).",
+        ]
+    )
+
+
+def conclusion(preds: dict[str, np.ndarray], y: np.ndarray, ab: np.ndarray) -> str:
+    lines = ["## 0. Conclusion (plain words)"]
+    for label, mask in (("Canada", np.ones_like(ab)), ("Alberta", ab)):
+        sub = {k: v[mask] for k, v in preds.items()}
+        ref = best_baseline(sub, y[mask])
+        d, lo, hi = paired_difference(METRICS["log_loss"], sub[FULL], sub[ref], y[mask])
+        if hi < 0:
+            verdict = "**beats** the best baseline"
+        elif lo > 0:
+            verdict = "is **worse than** the best baseline"
+        else:
+            verdict = "is **not distinguishable** from the best baseline"
+        lines.append(
+            f"- **{label}:** the deployed model {verdict} (*{ref}*) on log loss: "
+            f"Δ = {d:+.3f}, 95% CI [{lo:+.3f}, {hi:+.3f}] (n = {int(mask.sum())})."
+        )
+    for r in ablation_rows(preds, y, ab):
+        lines.append(
+            f"- **{r['change'].capitalize()}, {r['region']}:** {r['verdict']} "
+            f"(Δ log loss deployed − variant = {r['delta']:+.3f}, "
+            f"95% CI [{r['lo']:+.3f}, {r['hi']:+.3f}])."
+        )
+    lines.append(
+        "- **Weather is not a forecast input** (decision 2026-10-05). A weather signal "
+        "exists in the raw data (§6: post-2022 Alberta washouts followed wetter months than "
+        "other incidents), but the model cannot learn it from the training years, when "
+        "geotechnical incidents were rare in Alberta. It is shown as an observed pattern, "
+        "not a forecast. Backlog: *Washout watch* (rainfall anomaly, waterway crossings), "
+        "judged only on the rolling-origin check."
+    )
+    return "\n".join(lines)
+
+
+def _ci(metric: str, p: np.ndarray, y: np.ndarray) -> list[float]:
+    return [round(v, 3) for v in bootstrap(METRICS[metric], p, y)]
+
+
+def region_summary(preds: dict[str, np.ndarray], y: np.ndarray) -> dict[str, object]:
+    ref = best_baseline(preds, y)
+    d, lo, hi = paired_difference(METRICS["log_loss"], preds[FULL], preds[ref], y)
+    return {
+        "n_test": len(y),
+        "model": {m: _ci(m, preds[FULL], y) for m in METRICS},
+        "best_baseline": {"name": ref, **{m: _ci(m, preds[ref], y) for m in METRICS}},
+        "delta_log_loss_vs_best_baseline": [round(d, 3), round(lo, 3), round(hi, 3)],
+        "beats_best_baseline": bool(hi < 0),
+    }
+
+
+def high_confidence_calibration(p: np.ndarray, y: np.ndarray) -> dict[str, object]:
+    """How often forecasts above LOWER_CERTAINTY_ABOVE came true (one-vs-rest)."""
+    hits = np.zeros_like(p)
+    hits[np.arange(len(y)), y] = 1.0
+    mask = p > LOWER_CERTAINTY_ABOVE
+    return {
+        "threshold": LOWER_CERTAINTY_ABOVE,
+        "n_forecasts_above": int(mask.sum()),
+        "mean_predicted": round(float(p[mask].mean()), 3) if mask.any() else None,
+        "observed_rate": round(float(hits[mask].mean()), 3) if mask.any() else None,
+        "display_rule": "Probabilities above 50% are shown as '>50%, lower certainty'.",
+    }
+
+
+def write_summary(
+    preds: dict[str, np.ndarray],
+    y: np.ndarray,
+    ab: np.ndarray,
+    rolling: list[dict[str, object]],
+    deployable: HazardModel,
+    operator_data: list[dict[str, object]],
+) -> None:
+    summary = {
+        "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "report": "docs/MODEL_REPORT.md",
+        "split": {
+            "train": f"events <= {TRAIN_END_YEAR}",
+            "test": f"events >= {TRAIN_END_YEAR + 1}",
+            "training_scope": "national",
+        },
+        "features": {"deployed": list(ALL_FEATURES), "weather_in_model": False},
+        "canada": region_summary(preds, y),
+        "alberta": region_summary({k: v[ab] for k, v in preds.items()}, y[ab]),
+        "rolling_origin": rolling,
+        "ablations": [
+            {
+                **r,
+                "delta": round(r["delta"], 3),
+                "lo": round(r["lo"], 3),
+                "hi": round(r["hi"], 3),
+            }
+            for r in ablation_rows(preds, y, ab)
+        ],
+        "calibration_above_threshold": high_confidence_calibration(preds[FULL], y),
+        "low_evidence_rule": "fewer than 3 prior incidents within 25 km",
+        "operator_dependence": operator_data,
+        "deployed_model": {
+            "trained_through": deployable.meta.get("trained_through"),
+            "n_train": deployable.meta.get("n_train"),
+            "rounds": deployable.meta.get("rounds"),
+        },
+    }
+    SUMMARY_PATH.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+
+
+def train_deployable(X: pd.DataFrame, y: pd.Series, years: pd.Series) -> HazardModel:
+    model = train(X, y, years, list(ALL_FEATURES))
+    model.meta.update(
+        {
+            "trained_through": str(int(years.max())),
+            "trained_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        }
+    )
+    model.save(MODEL_PATH)
+    return model
+
+
+def main() -> None:
+    load_dotenv()
+    df = load_incidents()
+    X, y = training_frame(df)
+    meta = df.loc[X.index]
+    years = meta["event_date"].dt.year
+    ab = meta["is_alberta"].astype(bool)
+
+    split_text, preds, models, test_mask = section_split(X, y, years, ab)
+    yte = class_index(y[test_mask])
+    ab_te = ab[test_mask].to_numpy()
+    plot_calibration(preds, yte)
+    rolling_text, rolling = section_rolling(X, y, years, ab)
+    operator_text, operator_data = section_operator(preds, yte, X[test_mask], ab_te)
+    body = [
+        "# Flowline Hazard Forecast — Model Report",
+        (
+            f"Generated by `scripts/evaluate.py` on {datetime.now(UTC):%Y-%m-%d}. "
+            "Forecasts are based on historical public incident data. Flowline supports "
+            "engineering judgment; it does not certify any pipe as safe."
+        ),
+        conclusion(preds, yte, ab_te),
+        section_data(df, X),
+        split_text,
+        rolling_text,
+        section_ablation(preds, yte, ab_te),
+        operator_text,
+        section_failures(preds, yte, X[test_mask], ab_te),
+        section_washout(preds, yte, X[test_mask], ab_te, df, years),
+        section_shap(models[FULL], X[test_mask]),
+        "## 8. Calibration\n\n![calibration](model_calibration.png)",
+    ]
+    REPORT_PATH.write_text("\n\n".join(body) + "\n", encoding="utf-8")
+    print(f"wrote {REPORT_PATH.relative_to(ROOT)}")
+    deployable = train_deployable(X, y, years)
+    write_summary(preds, yte, ab_te, rolling, deployable, operator_data)
+    print(f"wrote {SUMMARY_PATH.relative_to(ROOT)}")
+    print(
+        f"saved deployable model ({deployable.meta['rounds']} rounds) to "
+        f"{MODEL_PATH.relative_to(ROOT)}.*"
+    )
+
+
+if __name__ == "__main__":
+    main()
