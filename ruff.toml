@@ -1,0 +1,3 @@
+# Ruff (lint + format). legacy/v1/ is the original hackathon build, kept verbatim as the
+# team's record, so it is excluded from both lint and format checks.
+extend-exclude = ["legacy/v1"]
