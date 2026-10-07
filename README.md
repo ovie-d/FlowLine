@@ -1,7 +1,23 @@
-# Flowline — Hazard Forecast
+# Flowline Hazard Forecast
+
+**v2.0.0** · [Changelog](CHANGELOG.md) · [Model report](docs/MODEL_REPORT.md)
 
 > *Their models tell you how strong the pipe is. Flowline tells you what kind of trouble
 > to prepare for, and who to send.*
+
+![Flowline forecasting the hazard mix around Edson, Alberta: map of past incidents by hazard type on the left, forecast bars and similar past incidents on the right](docs/images/flowline-hazard-forecast.png)
+
+Flowline is a readiness tool for pipeline operators. For any pipeline area and week, it
+**forecasts the mix of hazard types** likely behind an incident there. The forecast comes
+from the industry's public Canada Energy Regulator (CER) incident history, and Flowline
+shows the evidence behind it. It then turns the forecast into action: which crews and
+equipment to have ready, and in an emergency, which crew base to send by real drive time.
+
+> Forecasts are based on historical public incident data. Flowline supports engineering
+> judgment; it does not certify any pipe as safe. It is an add-on to an operator's
+> integrity models (QRA, Psqr, …), not a replacement.
+
+---
 
 ## Try it in 2 minutes
 
@@ -26,10 +42,14 @@ same by hand. You can read [`install.sh`](install.sh) / [`install.ps1`](install.
 
 ```bash
 git clone https://github.com/ovie-d/FlowLine.git flowline && cd flowline
-./start.sh                                    # Windows: powershell -ExecutionPolicy Bypass -File start.ps1
+./start.sh                       # Windows: powershell -ExecutionPolicy Bypass -File start.ps1
 ```
 
-**Prerequisites** (install these yourself; the installer links to each one if missing):
+Stop everything with `./stop.sh` (Windows: `stop.ps1`). Your data is kept.
+
+### Prerequisites
+
+Install these yourself; the installer links to each one if it's missing.
 
 | | Linux | macOS | Windows |
 |---|---|---|---|
@@ -46,186 +66,134 @@ About 5 GB free disk (packages, Docker images, database, routing data).
 > On corporate machines, check with IT before installing it. Docker Engine on Linux is
 > free (open source).
 
-**What the first run does.** It installs the Python and Node packages into the folder
-(nothing system-wide), builds the database from the public CER incident data, builds the
-web app and opens it. On a test machine that already had the packages and Docker images
-cached, it was ready in **under 2 minutes**. A fresh machine also downloads the Python and
-Node packages (about 1.4 GB installed) and builds the database image (about 0.7 GB), so
-expect it to take longer, depending on your connection. Road routing for emergency dispatch is prepared
-**in the background**: the Alberta OpenStreetMap extract (~350 MB) is downloaded and the
-router is built in about 5–10 more minutes. Until then, dispatch shows straight-line
-distance with a "routing is still being prepared" warning. Later starts take under a
-minute.
+### What the first run does
 
-**Without any keys:**
+- **Setup:** installs the Python and Node packages into the Flowline folder (nothing
+  system-wide), builds the database from the public CER incident data, builds the web app
+  and opens it.
+- **Time:** on a test machine that already had the packages and Docker images cached, it
+  was ready in under 2 minutes. A fresh machine also downloads about 1.4 GB of packages and
+  builds the database image (about 0.7 GB), so expect longer, depending on your connection.
+- **Road routing** for emergency dispatch is prepared in the background. The Alberta
+  OpenStreetMap extract (~350 MB) is downloaded and the router is built, about 5–10 more
+  minutes. Until then, dispatch shows straight-line distance with a "routing is still
+  being prepared" warning.
+- **Later starts** take under a minute.
 
-- **Map:** interactive WebGL map on open basemaps (OpenFreeMap dark/light/streets, Esri
-  satellite imagery). A Mapbox token in `.env.local` switches to Mapbox styles.
-- **AI readiness briefing:** off, with a message saying why. Add a `GEMINI_API_KEY` in
+### No keys needed
+
+- **Map:** an interactive WebGL map on open basemaps (OpenFreeMap dark/light/streets, Esri
+  satellite imagery). Add a Mapbox token to `.env.local` to switch to Mapbox styles.
+- **AI readiness briefing:** off, with a message saying why. Add a `GEMINI_API_KEY` to
   `.env` to turn it on.
 - **Everything else** (forecast, evidence, crews, dispatch, ranking) works without keys.
 
-**Before this is merged into `main`**, test the PR branch with
-`curl -fsSL https://raw.githubusercontent.com/ovie-d/FlowLine/hazard-forecast/install.sh | FLOWLINE_BRANCH=hazard-forecast bash`
-(Windows: set `$env:FLOWLINE_BRANCH = "hazard-forecast"` and use the `hazard-forecast`
-URL).
+### Desktop app
 
-**Desktop app.** A window with the Flowline icon that runs the same launcher and stops
-everything when closed: see [Desktop app](#desktop-app-linux-first) below. Windows and macOS
-builds come from GitHub Actions and are unsigned and untested.
+A window with the Flowline icon. It runs the same launcher, waits until everything is
+healthy, opens the app, and stops everything when you close it. Docker is still required.
 
----
-
-## What Flowline does
-
-For any pipeline area and date, Flowline:
-
-1. **Forecasts the mix of likely hazard types** (e.g. 36% ground movement & washout,
-   19% incorrect operation, 14% equipment failure) from the whole industry's public
-   Canada Energy Regulator (CER) incident history.
-2. **Shows the most similar past incidents** as evidence (pgvector similarity, strictly
-   before the forecast date).
-3. **Maps each hazard to the crews and equipment** it needs (editable table — sample data
-   until validated).
-4. **Routes the matching crew** in an emergency by real drive time (local OSRM).
-5. **Writes a short readiness briefing** with an AI agent (Gemini) that may only use
-   numbers returned by Flowline's own tools — every number is checked.
-
-The original corridor **Risk Ranking** (likelihood × consequence under an explicit policy)
-and the **Decision Log** are kept as tabs.
-
-> Forecasts are based on historical public incident data. Flowline supports engineering
-> judgment; it does not certify any pipe as safe. It is an add-on to an operator's
-> integrity models (QRA, Psqr, …), not a replacement.
-
-**How good is it?** On 2022+ incidents it never saw, it clearly beats simple history
-across Canada; in Alberta the gain is real but narrow; on NGTL alone it is not yet
-distinguishable from simple history. Details: [`docs/MODEL_REPORT.md`](docs/MODEL_REPORT.md).
+- **Linux:** download the AppImage from the
+  [v2.0.0 release](https://github.com/ovie-d/FlowLine/releases/tag/v2.0.0), or build it
+  with `cd desktop && npm ci && npm run dist`. Then run `desktop/install-linux.sh --desktop`
+  to add it to your app menu and desktop. Distros without `libfuse2` are handled.
+- **Windows (.exe) and macOS (.dmg):** built by GitHub Actions, **unsigned and untested**.
+  [desktop/README.md](desktop/README.md) explains how to get past SmartScreen and
+  Gatekeeper.
 
 ---
 
-## What `start.sh` does
+## Features
 
-`start.sh` (Windows: `start.ps1`) is idempotent. Run it any time:
-
-1. checks Docker is running (starts Docker Desktop on macOS/Windows),
-2. creates `.env` / `.env.local` from `.env.example` if missing (no keys needed),
-3. creates the Python venv and installs Node packages on first run (re-installs when
-   `requirements.txt` changes),
-4. starts PostgreSQL + PostGIS + pgvector (and OSRM once its data exists) with
-   `docker compose`, and waits for the healthchecks,
-5. loads the database if it is empty (downloads the CER CSVs if needed),
-6. starts the background setup if routing or the river-crossings layer is missing
-   (`scripts/background_setup.sh`, log in `logs/background-setup.log`; `FLOWLINE_ROUTING=0`
-   skips it),
-7. builds the web app when anything baked into it changed, starts the API (:8000) and the
-   web app (:3000), then opens <http://localhost:3000>.
-
-Stop everything (data is kept): `./stop.sh` (Windows: `stop.ps1`). This also pauses an
-unfinished background setup, which resumes on the next start.
-Logs: `logs/api.log`, `logs/web.log`, `logs/background-setup.log`. The Windows scripts are
-syntax-checked and partly exercised with PowerShell 7 on Linux, but **have not been run on
-Windows yet**.
-
-### Data steps (what the launcher automates, for reference)
-
-| Step | Command | Notes |
-|---|---|---|
-| CER incidents | downloaded to `data/raw/` | Open Government Licence – Canada |
-| CER pipeline systems | `python -m scripts.fetch_pipeline_systems` | operator commodity + map layer |
-| Weather (optional) | `python -m scripts.fetch_weather` | ECCC daily data, ~1 hour, resumable; used for similar incidents and context — **not** a model input |
-| Routing (optional) | `scripts/build_osrm.sh` (`.ps1`) | needs `data/osm/alberta-latest.osm.pbf` |
-| River crossings (optional) | `python -m scripts.washout_crossings --layer-only` | same OSM extract; map layer only |
-| Database | `python -m scripts.load_postgres` | idempotent; never overwrites crew-table edits |
-| Profile / evaluation | `python -m scripts.profile_cer`, `python -m scripts.evaluate` | writes `docs/DATA_PROFILE.md`, `docs/MODEL_REPORT.md`, `models/` |
-
-The trained model (`models/hazard_forecast.*`, < 1 MB) is committed, so a fresh clone can
-forecast without retraining.
-
-### Desktop app (Linux first)
-
-`desktop/` wraps the app in its own window (Electron, Flowline icon). It runs the same
-launcher, waits for the health checks, opens the window, and stops everything when you
-close it. **Docker is still required.**
-
-```bash
-cd desktop && npm ci && npm run dist   # → desktop/dist/Flowline-<version>-x86_64.AppImage
-./install-linux.sh                     # optional: add it to the desktop menu
-```
-
-WebGL is forced on (GPU blocklist ignored, software fallback allowed). Details, the
-`libfuse2` note and what Windows/macOS still need are in [desktop/README.md](desktop/README.md).
+- **Hazard forecast:** the probability of each of 8 hazard groups (corrosion & cracking,
+  equipment failure, incorrect operation, third-party damage, ground movement & washout,
+  natural forces, construction & material, fire / ignition) for a point or area and a date.
+  - Each bar shows its main drivers (SHAP) and how it compares with the Alberta average.
+  - A low-evidence warning appears when there is little nearby history.
+  - Probabilities above 50% are labelled "lower certainty", because the model was
+    overconfident there on held-out data.
+- **Evidence:** the most similar past incidents (pgvector), strictly before the forecast
+  date, with their CER cause codes in plain English.
+- **Readiness:** recommended crews and equipment for the likely hazards, the nearest crew
+  base by drive time, and the 7-day weather outlook (context only, not a model input).
+  The crew table is editable and marked *sample — to be validated* until an operator
+  replaces it.
+- **Emergency dispatch:** drop a pin or search. Flowline ranks crew bases by real drive
+  time (local OSRM on OpenStreetMap), draws every route, and handles an off-road last mile
+  separately.
+  - A response timeline replays the drive. It is labelled **simulation**: only the drive
+    time is real.
+  - It includes an equipment checklist and a printable one-page summary.
+- **Interactive map:**
+  - Basemaps: dark, light, streets and satellite; 3D terrain; a globe view.
+  - Layers: incidents (clustered), heatmap, pipelines, crew bases, river crossings.
+  - Click an incident for its details; a year slider replays the history.
+  - An offline Alberta map is used when WebGL is unavailable.
+- **AI readiness briefing** (optional, Gemini): a short briefing written only from
+  Flowline's own tool results. Every number in it is checked against those results.
+- **Risk Ranking & Decision Log** (from v1): corridor ranking under an explicit
+  likelihood × consequence policy, agent drafts, and a decision log.
+- Dark and light themes, accessible contrast (WCAG AA), and layouts from laptop to wide
+  screens.
 
 ---
 
-## Environment variables
+## How good is the forecast?
 
-Backend — `.env` (never commit):
+The full results are in [`docs/MODEL_REPORT.md`](docs/MODEL_REPORT.md).
 
-| Variable | Purpose |
-|---|---|
-| `DATABASE_URL` | `postgresql://flowline:flowline@localhost:5432/flowline` |
-| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | docker compose credentials |
-| `DECISIONS_BACKEND` | `postgres` (or `json` / `sqlite`) |
-| `GEMINI_API_KEY` | AI briefing + chat. Empty = AI off; everything else works |
-| `GEMINI_MODEL` | e.g. `gemini-3.1-flash-lite` (cheapest) or `gemini-3.5-flash-lite` |
-| `AGENT_MAX_OUTPUT_TOKENS` / `AGENT_BUDGET_USD` | budget guard (default 800 / $15) |
-| `OLLAMA_MODEL` / `OLLAMA_URL` | optional local fallback when Gemini is unreachable |
-| `OSRM_URL` | default `http://localhost:5000` |
-| `MAPBOX_TOKEN` | optional Directions fallback when OSRM is down; must not be URL-restricted |
+**Setup.** LightGBM multiclass model trained on CER incidents up to 2021 and tested on
+2022+ incidents it never saw. It was compared with simple baselines (national, provincial
+and local history), with 95% bootstrap confidence intervals.
 
-Frontend — `.env.local`:
+- **Across Canada (n = 430):** it clearly beats the best simple baseline. Log loss
+  improves by 0.154 [0.109, 0.198], and the true hazard is in its top 3 for 72% of
+  incidents.
+- **In Alberta (n = 164):** the gain is real but narrow: log loss improves by 0.081
+  [0.022, 0.139].
+- **On NGTL alone (n = 122):** the model is **not yet distinguishable** from simple
+  history (Δ log loss −0.037 [−0.107, +0.028]). Public data isn't enough for a single
+  operator's network. Operator incident data would be needed to do better.
+- **Earlier years:** the rolling-origin check (each year 2020–2025 trained only on the years
+  before it) shows a gain in most years. 2024 is not distinguishable from the baseline.
 
-| Variable | Purpose |
-|---|---|
-| `NEXT_PUBLIC_API_URL` | default `http://127.0.0.1:8000` |
-| `NEXT_PUBLIC_MAPBOX_TOKEN` | Mapbox `pk.…` token (URL-restricted). Empty = keyless open basemaps (MapLibre; OpenFreeMap + Esri imagery) |
-| `NEXT_PUBLIC_MAP_STYLE` | Risk Ranking map only: `dark` (default), `light-plus`, `outdoors`, `streets` |
+**Honest limitations:**
 
-The forecast and dispatch maps have their own **Map & layers** panel: basemap (Auto follows
-the dark/light theme; Dark, Light, Streets, Satellite), 3D terrain, globe when zoomed out,
-and layers (incidents, heatmap, pipelines, crew bases, river crossings). The river-crossings
-layer is built by `start.sh` on first run when the OSM extract is present (about two
-minutes; `python -m scripts.washout_crossings --layer-only` does the same by hand); without
-the extract the panel says so. Theme and map choices are remembered per browser.
-
----
-
-## Offline demo checklist
-
-| Works **without internet** | Needs internet |
-|---|---|
-| Hazard forecast, evidence, crews, crew editor | Basemaps, Mapbox or open (offline, the map falls back to the offline Alberta view with the same layers) |
-| Map layers (incidents, pipelines, bases, routes) | Open-Meteo weather outlook (panel shows "unavailable") |
-| Emergency dispatch with OSRM drive times (Alberta) | Gemini briefing / chat (falls back to Ollama if `OLLAMA_MODEL` is set) |
-| Risk Ranking, Decision Log, About this model | First-time downloads (CER data, OSM extract, Docker images, packages) |
-
-Before going offline: run `./start.sh` once online, check the OSRM container is healthy
-(`docker compose ps`), and make sure `data/osm/` and `osrm/` exist.
+- Public CER data has cause codes only, no incident narratives.
+- Rare hazards are forecast poorly: third-party damage, fire / ignition, and construction
+  & material defects.
+- Above 50%, probabilities were overconfident, so the app doesn't show an exact number
+  there.
+- Weather made no measurable difference, so it is shown as context, not used as a model
+  input.
+- The post-2022 rise in Alberta washouts is shown as an observed pattern, not a forecast.
+- Crew bases, crew types and equipment are sample data until an operator validates them.
 
 ---
 
 ## Architecture
 
 ```
-Next.js 16 (app/, components/command, components/ranking)  ── HTTP ──▶  FastAPI (api/)
-                                                                             │
-          core/: forecast · features · model (LightGBM + SHAP) · similar ◀───┤
-                 readiness · crews · routing (OSRM → Mapbox → straight line) │
-                 openmeteo · insights · agent/ (Gemini, tools, budget, numbers)
-                                                                             │
-PostgreSQL 18 + PostGIS + pgvector (docker)   OSRM (docker, Alberta car profile)
+Next.js 16 (app/, components/)  ── HTTP ──▶  FastAPI (api/)
+                                                  │
+   core/: forecast · features · model (LightGBM + SHAP) · similar (pgvector)
+          readiness · crews · routing (OSRM → Mapbox → straight line)
+          mapdata · insights · agent/ (Gemini, tools, budget, number check)
+                                                  │
+   PostgreSQL 18 + PostGIS + pgvector (Docker)    OSRM (Docker, Alberta car profile)
 ```
 
 | Layer | Stack |
 |---|---|
-| Frontend | Next.js 16, React 19, Tailwind 4, TanStack Query, Mapbox GL / react-map-gl, framer-motion |
+| Frontend | Next.js 16, React 19, Tailwind 4, TanStack Query, react-map-gl (Mapbox GL or MapLibre GL), framer-motion |
 | Backend | FastAPI, Pydantic, psycopg 3 |
 | Model | LightGBM multiclass (8 hazard groups), prior-corrected, SHAP drivers |
 | Data | PostgreSQL + PostGIS + pgvector, OSRM, ECCC weather, Open-Meteo |
-| Agent | Google Gemini via `google-genai`, tool calls only, optional Ollama |
+| Agent | Google Gemini via `google-genai`, tool calls only, optional local Ollama |
+| Desktop | Electron (Linux AppImage; Windows/macOS via GitHub Actions) |
 
-### API (main endpoints — interactive docs at `/docs`)
+<details>
+<summary>API endpoints (interactive docs at <code>http://127.0.0.1:8000/docs</code>)</summary>
 
 | Method | Path | What |
 |---|---|---|
@@ -239,36 +207,129 @@ PostgreSQL 18 + PostGIS + pgvector (docker)   OSRM (docker, Alberta car profile)
 | `POST` | `/briefing` | AI readiness briefing (numbers verified) |
 | `GET` | `/model/info`, `/insights/washout` | Held-out performance; observed washout pattern |
 | `GET` | `/agent/status`, `/agent/usage` | AI availability; token usage and spend |
-| `GET` | `/ranking`, `/corridor/{name}`, `/triage`, `/decisions`, … | Existing ranking product |
+| `GET` | `/ranking`, `/corridor/{name}`, `/triage`, `/decisions`, … | Risk Ranking and Decision Log |
+
+</details>
+
+<details>
+<summary>Configuration (<code>.env</code> and <code>.env.local</code>; created on first run, never committed)</summary>
+
+Backend: `.env`
+
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | `postgresql://flowline:flowline@localhost:5432/flowline` (local dev default) |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | docker compose credentials |
+| `DECISIONS_BACKEND` | `postgres` (or `json` / `sqlite`) |
+| `GEMINI_API_KEY` | AI briefing + chat. Empty = AI off; everything else works |
+| `GEMINI_MODEL` | e.g. `gemini-3.1-flash-lite` or `gemini-3.5-flash-lite` |
+| `AGENT_MAX_OUTPUT_TOKENS` / `AGENT_BUDGET_USD` | budget guard (default 800 / $15) |
+| `OLLAMA_MODEL` / `OLLAMA_URL` | optional local fallback when Gemini is unreachable |
+| `OSRM_URL` | default `http://localhost:5000` |
+| `MAPBOX_TOKEN` | optional Directions fallback when OSRM is down; must not be URL-restricted |
+
+Frontend: `.env.local`
+
+| Variable | Purpose |
+|---|---|
+| `NEXT_PUBLIC_API_URL` | default `http://127.0.0.1:8000` |
+| `NEXT_PUBLIC_MAPBOX_TOKEN` | Mapbox `pk.…` token (URL-restricted). Empty = keyless open basemaps |
+| `NEXT_PUBLIC_MAP_STYLE` | Risk Ranking map with Mapbox: `dark` (default), `light-plus`, `outdoors`, `streets` |
+
+Launcher options: `FLOWLINE_ROUTING=0` skips the background routing setup; `API_PORT` /
+`WEB_PORT` change the ports; `FORCE_BUILD=1` rebuilds the web app.
+
+</details>
+
+<details>
+<summary>What <code>start.sh</code> does, and offline use</summary>
+
+`start.sh` (Windows: `start.ps1`) is idempotent; run it any time:
+
+1. checks Docker is running (starts Docker Desktop on macOS/Windows),
+2. creates `.env` / `.env.local` from `.env.example` if missing (no keys needed),
+3. creates the Python venv and installs Node packages on first run (re-installs when
+   `requirements.txt` changes),
+4. starts PostgreSQL + PostGIS + pgvector (and OSRM once its data exists) with
+   `docker compose`, and waits for the healthchecks,
+5. loads the database if it is empty (downloads the CER data if needed),
+6. starts the background setup if routing or the river-crossings layer is missing (log in
+   `logs/background-setup.log`),
+7. builds the web app when anything baked into it changed, starts the API (:8000) and the
+   web app (:3000), then opens <http://localhost:3000>.
+
+**Offline:** after one online start, the forecast, evidence, crews, dispatch (OSRM),
+ranking and decision log work without internet. Basemaps, the weather outlook and the
+Gemini briefing need a connection; the map falls back to the offline Alberta view.
+
+**Windows:** `start.ps1`, `stop.ps1` and `install.ps1` are syntax-checked and partly
+exercised with PowerShell 7 on Linux, but **haven't been run on Windows yet**.
+
+</details>
 
 ---
 
-## Tests
+## Development
 
 ```bash
-.venv/bin/pytest -q          # Postgres tests use a throwaway flowline_test database
-npm run lint && npm run build
+.venv/bin/pytest -q            # Python tests (Postgres tests use a throwaway flowline_test DB)
+npm run lint && npm run build  # frontend
+python -m scripts.evaluate     # re-run the evaluation; rewrites docs/MODEL_REPORT.md
 ```
 
-Tests never call a real LLM or touch your decision log or usage log.
+Tests never call a real LLM or touch your decision log or usage log. `AGENTS.md` has the
+architecture and the project rules: no invented numbers, leakage guards, and never tuning
+on the 2022+ test set.
+
+**Docs:**
+
+- [`docs/MODEL_REPORT.md`](docs/MODEL_REPORT.md): evaluation (time split, rolling origin,
+  baselines, ablations, operator check, where it fails).
+- [`docs/DATA_PROFILE.md`](docs/DATA_PROFILE.md): CER data profile, hazard taxonomy, and
+  a leakage check of every candidate feature.
+- [`docs/WEATHER_COVERAGE.md`](docs/WEATHER_COVERAGE.md) and
+  [`docs/WASHOUT_WATCH.md`](docs/WASHOUT_WATCH.md): the weather and washout experiments.
+- [`docs/research/TSB_NARRATIVES.md`](docs/research/TSB_NARRATIVES.md): whether public
+  TSB narratives could be used.
+- [`desktop/README.md`](desktop/README.md): the desktop app.
+- [`legacy/v1/`](legacy/v1/): the original v1 hackathon build.
 
 ---
 
-## Docs
+## Data sources and licences
 
-- [`docs/MODEL_REPORT.md`](docs/MODEL_REPORT.md) — honest evaluation (time split, rolling origin, baselines, ablations, operator check, where it fails)
-- [`docs/DATA_PROFILE.md`](docs/DATA_PROFILE.md) — CER data profile, hazard taxonomy, leakage check of every candidate feature
-- [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) · [`docs/QA_PREP.md`](docs/QA_PREP.md) — 5-minute demo and likely questions
-- [`docs/WEATHER_COVERAGE.md`](docs/WEATHER_COVERAGE.md) · [`docs/WASHOUT_WATCH.md`](docs/WASHOUT_WATCH.md) · [`docs/research/`](docs/research/) · [`docs/BACKLOG.md`](docs/BACKLOG.md)
-- [`HANDOFF.md`](HANDOFF.md) / [`CODING_GUIDELINES.md`](CODING_GUIDELINES.md) — original ranking product
+| Source | Used for | Licence / terms |
+|---|---|---|
+| [Canada Energy Regulator](https://www.cer-rec.gc.ca/en/safety-environment/industry-performance/interactive-pipeline/): Pipeline Incident Data, Pipeline Systems | Incidents, hazard labels, pipeline map | [Open Government Licence – Canada](https://open.canada.ca/en/open-government-licence-canada) |
+| [Environment and Climate Change Canada](https://climate.weather.gc.ca/): Historical Climate Data | Weather context, similar-incident search | Open Government Licence – Canada |
+| [OpenStreetMap](https://www.openstreetmap.org/copyright) via [Geofabrik](https://download.geofabrik.de/) | Road routing, river crossings | ODbL, © OpenStreetMap contributors |
+| [OSRM](https://project-osrm.org/) | Drive times | BSD 2-Clause |
+| [Open-Meteo](https://open-meteo.com/) | 7-day weather outlook | CC BY 4.0 |
+| [OpenFreeMap](https://openfreemap.org/) (OpenMapTiles schema) | Keyless basemaps | Free to use; OSM data under ODbL |
+| [Esri World Imagery](https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9) | Keyless satellite basemap | Esri terms of use, with attribution |
+| [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) | Keyless 3D terrain | Open data; attribution per source |
+| [Mapbox](https://www.mapbox.com/legal/tos) (optional) | Basemaps with a token | Mapbox terms of service |
 
-## Data sources
+The keyless basemap services are free with fair-use limits. Check their terms before a
+large production deployment.
 
-Canada Energy Regulator — Pipeline Incident Data and Pipeline Systems layer (Open
-Government Licence – Canada) · Environment and Climate Change Canada — Historical Climate
-Data · © OpenStreetMap contributors (Geofabrik extract), routing via OSRM · Open-Meteo ·
-Mapbox.
+---
+
+## Credits
+
+Built by the **Tech Wolves** team for the IEEE Young Professionals Industry Hackathon
+2026 (Energy & Infrastructure, Case 10), and carried on from there.
+
+- **Special thanks to David ([@ovie-d](https://github.com/ovie-d))** for the original v1
+  build: the scoring core, the agent and the decision log. Everything in v2 stands on that
+  foundation, and he worked incredibly hard on it. The v1 plan and code are kept in
+  [`legacy/v1/`](legacy/v1/).
+- Thanks to **[@jafar3073](https://github.com/jafar3073)** and the whole **Tech Wolves**
+  team.
+- v2.0 (Hazard Forecast, dispatch, maps, installers and desktop app):
+  [@aabceh112358](https://github.com/aabceh112358).
 
 ## License
 
-Hackathon project · Tech Wolves · IEEE YP Industry Hackathon 2026.
+No open-source licence has been chosen yet. Until one is added, all rights are reserved
+by the authors. The data sources above keep their own licences.

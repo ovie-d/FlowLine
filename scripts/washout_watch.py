@@ -10,7 +10,7 @@ Candidate features (all known before the incident):
   NORMAL_YEARS years *before* the incident (>= MIN_NORMAL_YEARS valid years).
 - dist_crossing_km / n_crossings_10km: nearest pipeline–waterway crossing (Alberta OSM).
 
-Decision rule, fixed before running (docs/BACKLOG.md):
+Decision rule, fixed before running:
 - Rolling origins with test years 2016–2021 only; each year trained on earlier years.
   The 2022+ test set is never used.
 - Adopt a feature set only if the pooled paired-bootstrap Δ log loss (with − without)
@@ -245,7 +245,7 @@ def main() -> None:
                 "pattern, not a forecast. Alberta-only results are shown for information: under the "
                 "rule they cannot adopt a feature, and none of their intervals excludes zero either. "
                 "The crossing-distance pattern (washouts closer to pipeline–waterway crossings before "
-                "2022) is kept as an observed, suggestive finding for a pilot — see docs/QA_PREP.md."
+                "2022) is kept as an observed, suggestive finding for a pilot with operator data."
             ),
         ]
     )

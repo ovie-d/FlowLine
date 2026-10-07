@@ -88,15 +88,11 @@ def main() -> int:
     print(f"Wrote {count} features, {size:,} bytes ({size / 1024 / 1024:.2f} MB)")
 
     if size > MAX_BYTES:
-        print(
-            "File exceeds 2 MB — re-running with maxAllowableOffset=0.01…"
-        )
+        print("File exceeds 2 MB — re-running with maxAllowableOffset=0.01…")
         offset_tol = 0.01
         collection = fetch_all(offset_tol)
         count, size = write_collection(collection)
-        print(
-            f"Wrote {count} features, {size:,} bytes ({size / 1024 / 1024:.2f} MB)"
-        )
+        print(f"Wrote {count} features, {size:,} bytes ({size / 1024 / 1024:.2f} MB)")
 
     if size > MAX_BYTES:
         print(

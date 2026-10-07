@@ -10,8 +10,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # Flowline Hazard Forecast — architecture and rules
 
-Read `README.md` first; product context in `docs/research/MARKET_RESEARCH.md`,
-honest results in `docs/MODEL_REPORT.md`, data facts in `docs/DATA_PROFILE.md`.
+Read `README.md` first (product, setup, results); honest results in `docs/MODEL_REPORT.md`,
+data facts in `docs/DATA_PROFILE.md`; the original v1 hackathon build is in `legacy/v1/`.
 
 ## Layout
 - `core/` — all logic (pure functions where possible):
