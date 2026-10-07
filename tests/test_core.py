@@ -186,9 +186,7 @@ def test_improvement_for_slider_table():
         if high == 1:
             cfg = BASELINE_COUNT
         else:
-            cfg = RiskConfig(
-                weights={"high": float(high), "medium": 1.5, "low": 1.0}
-            )
+            cfg = RiskConfig(weights={"high": float(high), "medium": 1.5, "low": 1.0})
         result = improvement_for(cfg, top=15)
         assert result["serious_total"] == 123
         assert result["baseline"]["serious_captured"] == 62

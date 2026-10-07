@@ -1,7 +1,7 @@
 {
   "name": "flowline-desktop",
   "productName": "Flowline",
-  "version": "0.1.0",
+  "version": "2.0.0",
   "description": "Flowline Hazard Forecast desktop window (starts the local services)",
   "private": true,
   "main": "main.js",

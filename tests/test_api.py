@@ -136,6 +136,7 @@ def test_agent_forwards_high_as_policy(
     assert r2.status_code == 200
     assert seen["policy"] == {"count_only": True}
 
+
 def test_ranking_csv_filename(client: TestClient) -> None:
     r = client.get("/ranking.csv", params={"high": 6})
     assert r.status_code == 200

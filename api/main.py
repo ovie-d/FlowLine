@@ -37,7 +37,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="FlowLine API",
-    version="0.1.0",
+    version="2.0.0",
     lifespan=lifespan,
     default_response_class=UTF8JSONResponse,
 )

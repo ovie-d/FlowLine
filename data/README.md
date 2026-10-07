@@ -1,6 +1,14 @@
-# Data Guide - Pipeline Incident Ranking (Case 10)
+# Data guide
 
-A 2015-through-August-2026 Alberta subset of CER Pipeline Incident Data is already in this folder.
+Two kinds of data live here:
+
+- **Bundled seed (committed):** a 2015-through-August-2026 Alberta subset of the CER
+  Pipeline Incident Data, used by the **Risk Ranking** tab (the original v1 product).
+- **Downloaded on first run (not committed):** the full national CER incident file and
+  data dictionary (`data/raw/`), the CER pipeline systems layer (`data/processed/`), the
+  optional ECCC weather (`data/weather/`) and the Alberta OpenStreetMap extract
+  (`data/osm/`). The **Hazard Forecast** and its database are built from these by
+  `start.sh` (`python -m scripts.load_postgres`).
 
 ---
 
