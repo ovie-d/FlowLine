@@ -48,7 +48,7 @@ def compare(
         from_rank = rank_a[corridor]["rank"] if in_a else None
         to_rank = rank_b[corridor]["rank"] if in_b else None
         if from_rank == to_rank and in_a and in_b:
-            # still record if score components shifted a lot? HANDOFF wants movers
+            # still record if score components shifted a lot? The v1 handoff wants movers
             # that rose/fell — skip unchanged ranks.
             continue
         if from_rank is None or to_rank is None:

@@ -32,4 +32,4 @@ Adopt a feature set only if the pooled paired-bootstrap Δ log loss (with − wi
 
 ## Conclusion
 
-No candidate met the rule. The washout features are **dropped**; the descriptive finding stays as the UI insight card (GET /insights/washout), labelled as an observed pattern, not a forecast. Alberta-only results are shown for information: under the rule they cannot adopt a feature, and none of their intervals excludes zero either. The crossing-distance pattern (washouts closer to pipeline–waterway crossings before 2022) is kept as an observed, suggestive finding for a pilot — see docs/QA_PREP.md.
+No candidate met the rule. The washout features are **dropped**; the descriptive finding stays as the UI insight card (GET /insights/washout), labelled as an observed pattern, not a forecast. Alberta-only results are shown for information: under the rule they cannot adopt a feature, and none of their intervals excludes zero either. The crossing-distance pattern (washouts closer to pipeline–waterway crossings before 2022) is kept as an observed, suggestive finding for a pilot with operator data.
