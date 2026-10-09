@@ -1,6 +1,6 @@
 # Flowline online demo on free hosting
 
-**Live demo:** https://flowline-web-gamma.vercel.app
+**Live demo:** https://flowline-hazard-forecast.vercel.app
 
 | Part | Service (free plan, no credit card) | Notes |
 |---|---|---|

@@ -1,6 +1,6 @@
 # Flowline Hazard Forecast
 
-**v2.1.0** · **[Try it online](https://flowline-web-gamma.vercel.app)** · [Changelog](CHANGELOG.md) · [Model report](docs/MODEL_REPORT.md)
+**v2.1.0** · **[Try it online](https://flowline-hazard-forecast.vercel.app)** · [Changelog](CHANGELOG.md) · [Model report](docs/MODEL_REPORT.md)
 
 > *Their models tell you how strong the pipe is. Flowline tells you what kind of trouble
 > to prepare for, and who to send.*
@@ -21,7 +21,7 @@ equipment to have ready, and in an emergency, which crew base to send by real dr
 
 ## Try it online (no install)
 
-Open **<https://flowline-web-gamma.vercel.app>**. It's the full app in your browser: forecast, evidence,
+Open **<https://flowline-hazard-forecast.vercel.app>**. It's the full app in your browser: forecast, evidence,
 readiness, emergency dispatch with real drive times, the maps, and the AI briefing.
 
 - **AI limit:** it's a free demo by a student team, so each visitor gets **3 AI prompts
