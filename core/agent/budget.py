@@ -184,6 +184,9 @@ def guarded_generate(
         },
         path,
     )
+    from core import demo  # local import: demo imports this module lazily too
+
+    demo.record_spend(cost)
     with _lock:
         _cache[key] = (now, resp)
     return resp, False

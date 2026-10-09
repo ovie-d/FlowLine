@@ -21,6 +21,9 @@ def _isolate_backends(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     # Never call a real (billed) LLM from tests, never touch the real usage log.
     for var in ("GEMINI_API_KEY", "GEMINI_MODEL", "OLLAMA_MODEL", "ANTHROPIC_API_KEY"):
         monkeypatch.setenv(var, "")
+    # Online-demo settings (quota, sandbox, remote AI) are opt-in per test.
+    for var in ("FLOWLINE_DEMO", "FLOWLINE_REMOTE_AI"):
+        monkeypatch.setenv(var, "")
     from core.agent import budget
 
     monkeypatch.setattr(budget, "USAGE_LOG", tmp_path / "agent_usage.jsonl")

@@ -52,9 +52,10 @@ fi
 # ---------------------------------------------------------------- dependencies
 PY=".venv/bin/python"
 if [[ ! -x "$PY" ]]; then
-  command -v python3 >/dev/null || die "python3 (3.11+) is required."
+  PYBIN="${FLOWLINE_PYTHON:-python3}"  # e.g. python3.12 where python3 is older
+  command -v "$PYBIN" >/dev/null || die "Python 3.11+ is required ($PYBIN not found)."
   say "Creating Python venv and installing requirements (first run only)…"
-  python3 -m venv .venv
+  "$PYBIN" -m venv .venv
   .venv/bin/pip install -q --upgrade pip
   .venv/bin/pip install -q -r requirements.txt
 fi

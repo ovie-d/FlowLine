@@ -3,14 +3,19 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/ovie-d/FlowLine/main/install.sh | bash
 #
-# Checks the prerequisites (Docker, git, Node.js 20+, Python 3.11+), clones Flowline
-# (or updates an existing clone) and runs ./start.sh, which installs the rest and opens
-# the app. Nothing is installed system-wide and no keys are needed.
+# 1. Checks the prerequisites (Docker, git, Node.js 20+, Python 3.11+) and offers to
+#    install any that are missing, showing the exact commands and asking first.
+# 2. Clones Flowline (or updates an existing clone).
+# 3. Asks for an optional Mapbox token (Enter skips it: the app uses open maps).
+# 4. Runs ./start.sh, which installs the Python/Node packages into the folder and opens
+#    the app. AI briefings work without a key through the Flowline online demo
+#    (3 per day); put your own GEMINI_API_KEY in .env for unlimited use.
 #
 # Options (environment variables):
 #   FLOWLINE_DIR     where to put Flowline          (default: ~/flowline)
 #   FLOWLINE_BRANCH  which branch to install         (default: main)
 #   FLOWLINE_REPO    git URL                         (default: https://github.com/ovie-d/FlowLine.git)
+#   FLOWLINE_YES=1   install missing prerequisites without asking
 #   FLOWLINE_NO_START=1  clone/update only, don't start
 #
 # Everything lives in main(), so a partly downloaded script never runs half-way.
@@ -20,72 +25,162 @@ main() {
   local repo="${FLOWLINE_REPO:-https://github.com/ovie-d/FlowLine.git}"
   local branch="${FLOWLINE_BRANCH:-main}"
   local dir="${FLOWLINE_DIR:-$HOME/flowline}"
-  local os missing=() notes=()
+  local os pm="" python="python3"
+  USER="${USER:-$(id -un)}"
   os="$(uname -s)"
 
   say()  { printf '\033[1;33m▸\033[0m %s\n' "$*"; }
   ok()   { printf '\033[1;32m✓\033[0m %s\n' "$*"; }
   bad()  { printf '\033[1;31m✗\033[0m %s\n' "$*"; }
+  have() { command -v "$1" >/dev/null 2>&1; }
+  # Questions go to the terminal even when this script arrives through a pipe.
+  # (/dev/tty can exist without being openable: no controlling terminal, e.g. CI.)
+  tty_ok() { { : </dev/tty; } 2>/dev/null; }
+  ask() {
+    local prompt="$1" reply=""
+    if tty_ok; then
+      printf '%s' "$prompt" > /dev/tty
+      IFS= read -r reply < /dev/tty || true
+    fi
+    printf '%s' "$reply"
+  }
+  as_root() { if [[ $EUID -eq 0 ]]; then "$@"; else sudo "$@"; fi; }
+  local SUDO="sudo "
+  [[ $EUID -eq 0 ]] && SUDO=""
 
   case "$os" in
     Linux|Darwin) ;;
     *) bad "This installer is for Linux and macOS. On Windows use install.ps1 (see the README)."; exit 1 ;;
   esac
-  say "Checking prerequisites…"
-
-  # ---- git
-  if command -v git >/dev/null; then ok "git $(git --version | awk '{print $3}')"
-  elif [[ "$os" == Darwin ]]; then missing+=("git: run 'xcode-select --install' (or https://git-scm.com/downloads)")
-  else missing+=("git: install it with your package manager (e.g. 'sudo apt install git') or https://git-scm.com/downloads"); fi
-
-  # ---- Docker (installed and running; start.sh can use the docker group via sg)
-  if ! command -v docker >/dev/null; then
-    if [[ "$os" == Darwin ]]; then missing+=("Docker Desktop: https://docs.docker.com/desktop/setup/install/mac-install/")
-    else missing+=("Docker Engine: https://docs.docker.com/engine/install/ (then add yourself to the docker group: https://docs.docker.com/engine/install/linux-postinstall/)"); fi
-  elif docker info >/dev/null 2>&1 || { id -nG "$USER" 2>/dev/null | grep -qw docker && sg docker -c "docker info" >/dev/null 2>&1; }; then
-    ok "Docker $(docker --version | awk '{print $3}' | tr -d ,) (running)"
-  elif [[ "$os" == Darwin ]]; then
-    notes+=("Docker Desktop is installed but not running; start.sh will try to start it.")
-    ok "Docker $(docker --version | awk '{print $3}' | tr -d ,) (not running yet)"
-  else
-    missing+=("Docker is installed but not running or not accessible: 'sudo systemctl start docker', and add yourself to the docker group (https://docs.docker.com/engine/install/linux-postinstall/), then log out and back in")
+  if [[ "$os" == Linux ]]; then
+    for p in apt-get dnf pacman; do have "$p" && { pm="$p"; break; }; done
   fi
 
-  # ---- Node.js 20+ and npm
-  if command -v node >/dev/null && command -v npm >/dev/null; then
-    local node_major
-    node_major="$(node -p 'process.versions.node.split(".")[0]')"
-    if (( node_major >= 20 )); then ok "Node.js $(node -v)"
-    else missing+=("Node.js 20 or newer (you have $(node -v)): https://nodejs.org/en/download"); fi
-  else
-    missing+=("Node.js 20+ with npm: https://nodejs.org/en/download")
-  fi
-
-  # ---- Python 3.11+ with venv
-  if command -v python3 >/dev/null; then
-    if python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)'; then
-      if python3 -c 'import venv, ensurepip' 2>/dev/null; then ok "Python $(python3 -V | awk '{print $2}')"
-      else missing+=("Python venv support: 'sudo apt install python3-venv' (Debian/Ubuntu) or your distro's equivalent"); fi
-    else
-      missing+=("Python 3.11 or newer (you have $(python3 -V 2>&1 | awk '{print $2}')): https://www.python.org/downloads/")
+  # ------------------------------------------------------------ what is missing
+  local need_git=0 need_node=0 need_python=0 need_docker=0 docker_stopped=0
+  check() {
+    need_git=0 need_node=0 need_python=0 need_docker=0 docker_stopped=0
+    have git || need_git=1
+    if have node && have npm && (( $(node -p 'process.versions.node.split(".")[0]') >= 20 )); then :; else need_node=1; fi
+    python=""
+    for c in python3 python3.13 python3.12 python3.11; do
+      if have "$c" && "$c" -c 'import sys, venv, ensurepip; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+        python="$c"; break
+      fi
+    done
+    [[ -n "$python" ]] || need_python=1
+    if ! have docker; then
+      need_docker=1
+    elif ! docker info >/dev/null 2>&1 && ! { id -nG "$USER" 2>/dev/null | grep -qw docker && sg docker -c "docker info" >/dev/null 2>&1; }; then
+      docker_stopped=1
     fi
-  else
-    missing+=("Python 3.11+: https://www.python.org/downloads/")
+  }
+  say "Checking prerequisites…"
+  check
+  (( need_git ))    || ok "git $(git --version | awk '{print $3}')"
+  (( need_node ))   || ok "Node.js $(node -v)"
+  (( need_python )) || ok "Python $("$python" -V | awk '{print $2}')"
+  (( need_docker || docker_stopped )) || ok "Docker $(docker --version | awk '{print $3}' | tr -d ,)"
+
+  # ------------------------------------------------------------ install plan
+  local plan=() manual=()
+  if (( need_git || need_node || need_python || need_docker )); then
+    if [[ "$os" == Darwin ]]; then
+      have brew || plan+=('/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"   # Homebrew')
+      local pkgs=()
+      (( need_git )) && pkgs+=(git)
+      (( need_node )) && pkgs+=(node)
+      (( need_python )) && pkgs+=(python@3.12)
+      (( ${#pkgs[@]} )) && plan+=("brew install ${pkgs[*]}")
+      (( need_docker )) && plan+=("brew install --cask docker   # Docker Desktop (see the licence note in the README)")
+    elif [[ "$pm" == apt-get ]]; then
+      local pkgs=(ca-certificates curl)
+      (( need_git )) && pkgs+=(git)
+      if (( need_python )); then
+        # The distro's python3 is used if it is 3.11+; older Ubuntu gets 3.12 (deadsnakes).
+        local cand
+        cand="$(apt-cache policy python3 2>/dev/null | awk '/Candidate:/ {print $2}' | grep -oE '^[0-9]+\.[0-9]+' || true)"
+        if [[ -n "$cand" ]] && printf '%s\n3.11\n' "$cand" | sort -V | head -1 | grep -qx 3.11; then
+          pkgs+=(python3 python3-venv)
+        elif grep -qi '^ID=ubuntu' /etc/os-release 2>/dev/null; then
+          pkgs+=(software-properties-common)
+          plan+=("${SUDO}apt-get update && ${SUDO}DEBIAN_FRONTEND=noninteractive apt-get install -y ${pkgs[*]}")
+          pkgs=()
+          plan+=("${SUDO}add-apt-repository -y ppa:deadsnakes/ppa && ${SUDO}DEBIAN_FRONTEND=noninteractive apt-get install -y python3.12 python3.12-venv   # Python 3.12")
+        else
+          manual+=("Python 3.11+ (your distribution's python3 is older): https://www.python.org/downloads/")
+        fi
+      fi
+      (( ${#pkgs[@]} )) && plan+=("${SUDO}apt-get update && ${SUDO}DEBIAN_FRONTEND=noninteractive apt-get install -y ${pkgs[*]}")
+      (( need_node )) && plan+=("curl -fsSL https://deb.nodesource.com/setup_22.x | ${SUDO:+sudo -E }bash - && ${SUDO}DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs   # Node.js 22 (NodeSource)")
+      (( need_docker )) && plan+=("curl -fsSL https://get.docker.com | ${SUDO}sh && ${SUDO}usermod -aG docker $USER && ${SUDO}systemctl enable --now docker   # Docker Engine")
+    elif [[ "$pm" == dnf ]]; then
+      local pkgs=()
+      (( need_git )) && pkgs+=(git)
+      (( need_node )) && pkgs+=(nodejs npm)
+      (( need_python )) && pkgs+=(python3)
+      (( ${#pkgs[@]} )) && plan+=("${SUDO}dnf install -y ${pkgs[*]}")
+      (( need_docker )) && plan+=("curl -fsSL https://get.docker.com | ${SUDO}sh && ${SUDO}usermod -aG docker $USER && ${SUDO}systemctl enable --now docker   # Docker Engine")
+    elif [[ "$pm" == pacman ]]; then
+      local pkgs=()
+      (( need_git )) && pkgs+=(git)
+      (( need_node )) && pkgs+=(nodejs npm)
+      (( need_python )) && pkgs+=(python)
+      (( need_docker )) && pkgs+=(docker docker-compose)
+      plan+=("${SUDO}pacman -S --needed --noconfirm ${pkgs[*]}")
+      (( need_docker )) && plan+=("${SUDO}usermod -aG docker $USER && ${SUDO}systemctl enable --now docker")
+    else
+      (( need_git )) && manual+=("git: https://git-scm.com/downloads")
+      (( need_node )) && manual+=("Node.js 20+: https://nodejs.org/en/download")
+      (( need_python )) && manual+=("Python 3.11+: https://www.python.org/downloads/")
+      (( need_docker )) && manual+=("Docker Engine: https://docs.docker.com/engine/install/")
+    fi
   fi
 
-  command -v curl >/dev/null || missing+=("curl: install it with your package manager")
-
-  if (( ${#missing[@]} )); then
-    echo
-    bad "Missing before Flowline can run:"
-    for m in "${missing[@]}"; do printf '   • %s\n' "$m"; done
-    echo
-    echo "Install those, then run the same command again."
+  if (( ${#manual[@]} )); then
+    echo; bad "Please install these yourself, then run the same command again:"
+    printf '   • %s\n' "${manual[@]}"
     exit 1
   fi
-  for n in "${notes[@]+"${notes[@]}"}"; do say "$n"; done
+  if (( ${#plan[@]} )); then
+    echo
+    say "Flowline needs a few tools first. The installer will run:"
+    printf '     %s\n' "${plan[@]}"
+    if [[ "${FLOWLINE_YES:-0}" != "1" ]]; then
+      local answer
+      answer="$(ask "   Install them now? This may ask for your password. [Y/n] ")"
+      if [[ -z "$answer" ]] && ! tty_ok; then
+        bad "No terminal to ask in. Re-run with FLOWLINE_YES=1 to install automatically."; exit 1
+      fi
+      [[ "$answer" =~ ^([Yy]|[Yy]es|)$ ]] || { bad "Nothing installed. Install the tools above, then run this again."; exit 1; }
+    fi
+    local input=/dev/null
+    tty_ok && input=/dev/tty
+    for cmd in "${plan[@]}"; do
+      say "${cmd%%   #*}"
+      bash -c "${cmd%%   #*}" < "$input" || { bad "That step failed. Fix it (or install by hand), then run this again."; exit 1; }
+    done
+    if [[ "$os" == Darwin ]] && have brew; then eval "$(brew shellenv 2>/dev/null)" || true; fi
+    if [[ "$os" == Darwin && "$need_docker" == 1 ]]; then open -a Docker || true; fi
+    hash -r
+    check
+    if (( need_git || need_node || need_python || need_docker )); then
+      bad "Some tools still aren't available in this terminal. Open a new terminal and run the same command again."
+      exit 1
+    fi
+    ok "Prerequisites installed"
+  fi
+  if (( docker_stopped )); then
+    if [[ "$os" == Darwin ]]; then
+      say "Docker Desktop isn't running yet; start.sh will start it."
+    else
+      say "Starting Docker (may ask for your password)…"
+      as_root systemctl start docker 2>/dev/null || true
+      id -nG "$USER" | grep -qw docker || as_root usermod -aG docker "$USER" || true
+    fi
+  fi
 
-  # ---- get the code
+  # ------------------------------------------------------------ get the code
   if [[ -d "$dir/.git" ]]; then
     say "Updating Flowline in $dir…"
     git -C "$dir" fetch --quiet origin "$branch"
@@ -103,13 +198,25 @@ main() {
   fi
   ok "Flowline is in $dir"
 
+  # ------------------------------------------------------------ optional map token
+  if [[ ! -f "$dir/.env.local" ]]; then
+    local token=""
+    token="$(ask "Mapbox token for the Mapbox map styles (optional, free at https://account.mapbox.com; press Enter to use the open maps): ")"
+    token="$(printf '%s' "$token" | tr -d '[:space:]')"
+    if [[ -n "$token" && ! "$token" =~ ^pk\. ]]; then
+      say "That doesn't look like a public Mapbox token (pk.…); using the open maps."
+      token=""
+    fi
+    printf 'NEXT_PUBLIC_API_URL=http://127.0.0.1:8000\nNEXT_PUBLIC_MAPBOX_TOKEN=%s\nNEXT_PUBLIC_MAP_STYLE=dark\n' "$token" > "$dir/.env.local"
+  fi
+
   if [[ "${FLOWLINE_NO_START:-0}" == "1" ]]; then
     echo "Start it with: cd \"$dir\" && ./start.sh"
     exit 0
   fi
   say "Starting Flowline (first run installs packages and builds the app; a few minutes)…"
   cd "$dir"
-  ./start.sh </dev/null
+  FLOWLINE_PYTHON="$python" ./start.sh </dev/null
   echo
   ok "Next time: cd \"$dir\" && ./start.sh    Stop: ./stop.sh"
 }

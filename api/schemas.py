@@ -26,6 +26,16 @@ class AgentRequest(BaseModel):
     high: float | None = None
 
 
+class DecisionCreate(BaseModel):
+    """A planner decision recorded directly (no AI call), e.g. from 'Approve P1'."""
+
+    corridor: str = Field(min_length=1, max_length=120)
+    action: str = Field(max_length=16)
+    priority: str = Field(max_length=4)
+    reason: str = Field(default="Approved from the agent draft.", max_length=500)
+    policy: dict[str, float | bool] | None = None
+
+
 class AgentResetRequest(BaseModel):
     session_id: str
 

@@ -251,8 +251,23 @@ export type AgentStatus = {
   model: string | null;
   fallback: string | null;
   reason: string | null;
-  usage: AgentUsage;
+  /** Spend counter (local installs only; hidden on the online demo). */
+  usage?: AgentUsage;
+  /** Online demo: this visitor's AI prompts left today. */
+  quota?: DemoQuota | null;
+  /** Local install using the online demo's AI (no local key). */
+  via_online_demo?: boolean;
 };
+
+export type DemoQuota = {
+  demo: true;
+  limit: number;
+  remaining: number;
+  daily_budget_reached: boolean;
+  note: string;
+};
+
+export type DemoStatus = DemoQuota | { demo: false };
 
 export type AgentUsage = {
   calls: number;
@@ -274,6 +289,8 @@ export type BriefingResult = {
   provider?: { provider: string; model: string };
   usage?: { model_calls: number; cached_calls: number; prompt_tokens: number; output_tokens: number };
   tool_calls?: { name: string; input?: Record<string, unknown> }[];
+  quota?: DemoQuota;
+  via_online_demo?: boolean;
 };
 
 export type Corridor = {

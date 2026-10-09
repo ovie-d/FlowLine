@@ -2,6 +2,42 @@
 
 All notable changes to Flowline. Versions follow [semantic versioning](https://semver.org/).
 
+## [2.1.0] — 2026-10-09
+
+The full build, everywhere: an online demo that needs no install, and installs that match
+the reference build.
+
+### Added
+
+- **Online demo**, hosted for free: Vercel for the website, Render for the API, Neon for
+  the database, and the public OSRM server for routing.
+  - The same app also builds as one container (database, own router, API, web) for
+    Docker hosts or Hugging Face Spaces with PRO, and runs as a laptop backup through a
+    free Cloudflare tunnel.
+  - Each visitor gets 3 AI prompts per day, with a hard daily AI budget, and a banner that
+    explains why: we're students on a small budget.
+  - Crew-table edits and decisions stay private to each visitor for 24 hours.
+  - The daily AI spend is kept in the database, so the cap survives the free server
+    sleeping.
+  - `deploy/free/` and `deploy/huggingface/` build and publish it.
+- **AI without a key:** local installs without a Gemini key use the online demo's AI,
+  within the same daily limit. Your own key always takes precedence.
+- **The installer offers to install missing prerequisites** (git, Node.js, Python,
+  Docker), always showing the commands and asking first:
+  - apt, dnf, pacman and Homebrew on Linux/macOS;
+  - winget on Windows.
+  - It also asks for an optional Mapbox token.
+- **Shipped data:** the derived station weather (ECCC) and the CER pipeline-systems layer.
+  Every install now has weather-aware similar incidents and the washout card, without
+  the hour-long weather download.
+
+### Changed
+
+- "Approve" on agent drafts records the decision directly, instead of through the AI
+  agent. It's instant, and it doesn't use an AI prompt.
+- The app can run behind one address: `/api` is proxied to the backend when
+  `FLOWLINE_API_PROXY` is set.
+
 ## [2.0.0] — 2026-10-06
 
 Flowline becomes **Flowline Hazard Forecast**: from "which corridor to inspect" to "what
@@ -95,5 +131,6 @@ October 2–4, 2026, Case 10). Plan and starter code: [`legacy/v1/`](legacy/v1/)
 - **API and dashboard:** a FastAPI pass-through over the core, and a Next.js dashboard with a
   Mapbox basemap of CER pipelines and an SVG fallback.
 
+[2.1.0]: https://github.com/ovie-d/FlowLine/releases/tag/v2.1.0
 [2.0.0]: https://github.com/ovie-d/FlowLine/releases/tag/v2.0.0
 [1.0.0]: https://github.com/ovie-d/FlowLine/tree/857237d

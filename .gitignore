@@ -59,7 +59,11 @@ pipeline-incidents-comprehensive-data.csv
 /data/raw/
 /data/osm/
 /data/weather/
-/data/processed/
+/data/processed/*
+# Small derived public data shipped so every install matches the reference build:
+# station weather per incident (ECCC, OGL-Canada) and the CER pipeline systems layer.
+!/data/processed/incident_weather.csv
+!/data/processed/pipelines_ca.geojson
 # Model artefacts: only the small deployed model is committed (< 1 MB); anything else
 # (retrains, large experiments) stays local.
 /models/*
@@ -80,3 +84,6 @@ desktop/build/flowline-home.json
 
 # Private notes, pitch material and design review screenshots (kept locally, never committed)
 private/
+
+# Hugging Face deploy bundle (data snapshot, staged Space)
+deploy/huggingface/.bundle/
