@@ -1,6 +1,6 @@
 # Flowline Hazard Forecast
 
-**v2.1.0** · **[Try it online](@@SPACE_URL@@)** · [Changelog](CHANGELOG.md) · [Model report](docs/MODEL_REPORT.md)
+**v2.1.0** · **[Try it online](https://a112358-flowline.hf.space)** · [Changelog](CHANGELOG.md) · [Model report](docs/MODEL_REPORT.md)
 
 > *Their models tell you how strong the pipe is. Flowline tells you what kind of trouble
 > to prepare for, and who to send.*
@@ -21,7 +21,7 @@ equipment to have ready, and in an emergency, which crew base to send by real dr
 
 ## Try it online (no install)
 
-Open **<@@SPACE_URL@@>**. It's the full app in your browser: forecast, evidence,
+Open **<https://a112358-flowline.hf.space>**. It's the full app in your browser: forecast, evidence,
 readiness, emergency dispatch with real drive times, the maps, and the AI briefing.
 
 - **AI limit:** it's a free demo by a student team, so each visitor gets **3 AI prompts
