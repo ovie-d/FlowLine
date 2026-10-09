@@ -174,3 +174,21 @@ CREATE INDEX IF NOT EXISTS incident_embeddings_hnsw
 -- Phase 6 additions (idempotent column adds).
 ALTER TABLE incidents ADD COLUMN IF NOT EXISTS closed_date date;
 ALTER TABLE incidents ADD COLUMN IF NOT EXISTS dist_pipeline_km double precision;
+
+-- Online demo (FLOWLINE_DEMO=1): per-visitor sandbox and AI quota (core/demo.py).
+-- Shared rows have visitor_id = ''; a visitor's own rows expire after 24 hours.
+ALTER TABLE decision_log ADD COLUMN IF NOT EXISTS visitor_id text NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS decision_log_visitor_idx ON decision_log (visitor_id, ts);
+CREATE TABLE IF NOT EXISTS crew_map_overrides (
+  visitor_id          text NOT NULL,
+  hazard_group        text NOT NULL,
+  crews               jsonb NOT NULL,
+  updated_at          timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (visitor_id, hazard_group)
+);
+CREATE TABLE IF NOT EXISTS ai_quota (
+  day                 date NOT NULL,
+  key                 text NOT NULL,
+  count               integer NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, key)
+);

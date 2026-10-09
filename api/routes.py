@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import csv
 import datetime as dt
 import io
@@ -19,11 +20,12 @@ from api.schemas import (
     BriefingRequest,
     CompareRequest,
     CrewMapUpdate,
+    DecisionCreate,
     DispatchRequest,
     ForecastRequest,
 )
 from api.sessions import get_history, reset_session, set_history
-from core import mapdata
+from core import demo, mapdata, remote_ai
 from core.agent import llm
 from core.agent.budget import usage_summary
 from core.agent.loop import MAX_TOOL_STEPS, UNAVAILABLE, run_agent, run_briefing
@@ -36,7 +38,7 @@ from core.pg import try_connect
 from core.readiness import readiness
 from core.scoring import explain_corridor, score
 from core.similar import find_similar, similar_to_incident
-from core.storage import read_decisions
+from core.storage import append_decision, read_decisions
 from core.triage import draft_triage
 
 AGENT_TIMEOUT_S = 30.0
@@ -71,6 +73,35 @@ def _csv_filename(*, high: float, count_only: bool) -> str:
     if float(high).is_integer():
         return f"ranking_high{int(high)}.csv"
     return f"ranking_high{high}.csv".replace(".", "_")
+
+
+def _submit(fn, *args, **kwargs):
+    """Run in the agent pool with this request's context (demo visitor id)."""
+    return _AGENT_POOL.submit(contextvars.copy_context().run, fn, *args, **kwargs)
+
+
+def _start_prompt() -> dict[str, Any] | None:
+    """Online demo: count one AI prompt for this visitor. Returns an error payload if
+    the visitor (or the whole demo) has no prompts left today, else None."""
+    if not demo.enabled():
+        return None
+    with _db_or_503() as conn:
+        try:
+            demo.consume_prompt(conn)
+        except demo.QuotaExceeded as exc:
+            return {**UNAVAILABLE, "reason": str(exc), "quota": demo.quota_status(conn)}
+    return None
+
+
+def _finish_prompt(result: dict[str, Any]) -> dict[str, Any]:
+    """Online demo: give the prompt back if the AI failed, and report what's left."""
+    if not demo.enabled():
+        return result
+    with _db_or_503() as conn:
+        if result.get("error"):
+            demo.refund_prompt(conn)
+        result["quota"] = demo.quota_status(conn)
+    return result
 
 
 def _db_or_503():
@@ -204,6 +235,10 @@ def assumptions() -> list[dict[str, Any]]:
 
 @router.post("/agent")
 def agent(body: AgentRequest) -> dict[str, Any]:
+    if not llm.status()["available"] and remote_ai.url():
+        return remote_ai.forward("/agent", body.model_dump())
+    if (blocked := _start_prompt()) is not None:
+        return blocked
     history = get_history(body.session_id)
     policy: dict[str, Any] | None = None
     if body.high is not None:
@@ -211,9 +246,7 @@ def agent(body: AgentRequest) -> dict[str, Any]:
             policy = {"count_only": True}
         else:
             policy = {"high": body.high}
-    future = _AGENT_POOL.submit(
-        run_agent, body.question, history, MAX_TOOL_STEPS, policy
-    )
+    future = _submit(run_agent, body.question, history, MAX_TOOL_STEPS, policy)
     try:
         result = future.result(timeout=AGENT_TIMEOUT_S)
     except FuturesTimeout:
@@ -242,7 +275,7 @@ def agent(body: AgentRequest) -> dict[str, Any]:
             payload[key] = result[key]
     if result.get("error"):
         payload["error"] = True
-    return payload
+    return _finish_prompt(payload)
 
 
 @router.post("/agent/reset")
@@ -254,6 +287,34 @@ def agent_reset(body: AgentResetRequest) -> dict[str, bool]:
 @router.get("/decisions")
 def decisions() -> list[dict[str, Any]]:
     return read_decisions()
+
+
+@router.post("/decisions")
+def decisions_create(body: DecisionCreate) -> dict[str, Any]:
+    """Record a planner decision directly (the 'Approve' buttons; no AI call)."""
+    try:
+        return append_decision(
+            {
+                "ts": dt.datetime.now(dt.UTC).isoformat(),
+                "corridor": body.corridor,
+                "action": body.action,
+                "priority": body.priority,
+                "reason": body.reason,
+                "policy": body.policy or {},
+                "source": "planner",
+            }
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/demo/status")
+def demo_status() -> dict[str, Any]:
+    """Online demo flag, the visitor's AI prompts left today, and the demo note."""
+    if not demo.enabled():
+        return {"demo": False}
+    with _db_or_503() as conn:
+        return demo.quota_status(conn)
 
 
 @router.get("/crews")
@@ -411,7 +472,23 @@ def washout_route() -> dict[str, Any]:
 @router.get("/agent/status")
 def agent_status() -> dict[str, Any]:
     """Whether the AI briefing/chat is available (no key = disabled, app still works)."""
-    return {**llm.status(), "usage": usage_summary()}
+    local = llm.status()
+    if not local["available"] and remote_ai.url():
+        remote = remote_ai.status()
+        if remote and remote.get("available"):
+            return {
+                "available": True,
+                "provider": "online demo",
+                "model": remote.get("model"),
+                "via_online_demo": True,
+                "quota": remote.get("quota"),
+            }
+    out: dict[str, Any] = {**local, "usage": usage_summary()}
+    if demo.enabled():
+        out.pop("usage")  # spend details stay private on the public demo
+        with _db_or_503() as conn:
+            out["quota"] = demo.quota_status(conn)
+    return out
 
 
 @router.get("/agent/usage")
@@ -424,8 +501,12 @@ def agent_usage() -> dict[str, Any]:
 def briefing(body: BriefingRequest) -> dict[str, Any]:
     """Readiness briefing written by the agent; every number comes from tool results."""
     if not llm.status()["available"]:
+        if remote_ai.url():
+            return remote_ai.forward("/briefing", body.model_dump(mode="json"))
         return {**UNAVAILABLE, "reason": llm.status()["reason"]}
-    future = _AGENT_POOL.submit(
+    if (blocked := _start_prompt()) is not None:
+        return blocked
+    future = _submit(
         run_briefing,
         latitude=body.latitude,
         longitude=body.longitude,
@@ -436,12 +517,12 @@ def briefing(body: BriefingRequest) -> dict[str, Any]:
     try:
         result = future.result(timeout=AGENT_TIMEOUT_S)
     except FuturesTimeout:
-        return {**UNAVAILABLE, "reason": "The briefing timed out."}
+        return _finish_prompt({**UNAVAILABLE, "reason": "The briefing timed out."})
     result["tool_calls"] = [
         {"name": c.get("name"), "input": c.get("input", {})}
         for c in result.get("tool_calls", [])
     ]
-    return result
+    return _finish_prompt(result)
 
 
 @router.get("/corridors")

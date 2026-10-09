@@ -12,6 +12,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
 from api.routes import router
+from core import demo
 from core.config import DEFAULT
 from core.env import load_dotenv
 from core.scoring import score
@@ -52,6 +53,31 @@ app.add_middleware(
 )
 
 app.add_middleware(GZipMiddleware, minimum_size=2048)
+
+
+class VisitorMiddleware:
+    """Bind the demo visitor (browser id + client IP) to the request's context.
+
+    A plain ASGI middleware, so the context reaches sync routes and the agent pool."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        headers = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
+        forwarded = headers.get("x-forwarded-for", "").split(",")[0].strip()
+        ip = forwarded or (scope.get("client") or ("", 0))[0]
+        tokens = demo.bind(headers.get("x-flowline-visitor", ""), ip)
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            demo.reset(tokens)
+
+
+app.add_middleware(VisitorMiddleware)
 
 app.include_router(router)
 

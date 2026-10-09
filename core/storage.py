@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from core import demo
 from core.db import connect, db_path, init_schema
 from core.pg import connect as pg_connect
 
@@ -153,10 +154,15 @@ def _append_decision_sqlite(stored: dict[str, Any]) -> dict[str, Any]:
 
 
 def _read_decisions_pg() -> list[dict[str, Any]]:
+    # Online demo: each visitor sees only their own decisions (last 24 h); locally the
+    # visitor is '' and this is the shared log.
     with pg_connect() as conn:
         rows = conn.execute(
             "SELECT id, ts, corridor, action, priority, reason, policy, source "
-            "FROM decision_log ORDER BY ts, id"
+            "FROM decision_log WHERE visitor_id = %s "
+            "AND (visitor_id = '' OR ts > now() - make_interval(hours => %s)) "
+            "ORDER BY ts, id",
+            (demo.visitor(), demo.SANDBOX_HOURS),
         ).fetchall()
     return [
         {**row, "ts": row["ts"].isoformat(), "policy": dict(row["policy"] or {})}
@@ -168,8 +174,8 @@ def _append_decision_pg(stored: dict[str, Any]) -> dict[str, Any]:
     with pg_connect() as conn:
         conn.execute(
             "INSERT INTO decision_log "
-            "(id, ts, corridor, action, priority, reason, policy, source) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s)",
+            "(id, ts, corridor, action, priority, reason, policy, source, visitor_id) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)",
             (
                 stored["id"],
                 stored["ts"],
@@ -179,6 +185,7 @@ def _append_decision_pg(stored: dict[str, Any]) -> dict[str, Any]:
                 stored["reason"],
                 json.dumps(stored["policy"]),
                 stored["source"],
+                demo.visitor(),
             ),
         )
     return stored
