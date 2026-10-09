@@ -4,11 +4,15 @@ Two kinds of data live here:
 
 - **Bundled seed (committed):** a 2015-through-August-2026 Alberta subset of the CER
   Pipeline Incident Data, used by the **Risk Ranking** tab (the original v1 product).
+- **Shipped derived data (committed):** `data/processed/incident_weather.csv` (station
+  weather around each incident, derived from ECCC Historical Climate Data) and
+  `data/processed/pipelines_ca.geojson` (CER pipeline systems). These make every install
+  match the reference build without the hour-long weather download.
 - **Downloaded on first run (not committed):** the full national CER incident file and
-  data dictionary (`data/raw/`), the CER pipeline systems layer (`data/processed/`), the
-  optional ECCC weather (`data/weather/`) and the Alberta OpenStreetMap extract
-  (`data/osm/`). The **Hazard Forecast** and its database are built from these by
-  `start.sh` (`python -m scripts.load_postgres`).
+  data dictionary (`data/raw/`) and the Alberta OpenStreetMap extract (`data/osm/`). The
+  raw ECCC station files (`data/weather/`) are only needed to regenerate the weather CSV
+  (`python -m scripts.fetch_weather`). The **Hazard Forecast** and its database are built
+  by `start.sh` (`python -m scripts.load_postgres`).
 
 ---
 
