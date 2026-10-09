@@ -1,0 +1,18 @@
+# Vercel hosts only the web app; the Python API runs elsewhere (deploy/free/).
+# Without this, Vercel would treat api/*.py as serverless functions.
+api/
+core/
+scripts/
+tests/
+deploy/
+docs/
+legacy/
+desktop/
+models/
+data/
+db/
+docker/
+*.py
+requirements.txt
+pytest.ini
+ruff.toml
