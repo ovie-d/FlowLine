@@ -84,3 +84,6 @@ desktop/build/flowline-home.json
 
 # Private notes, pitch material and design review screenshots (kept locally, never committed)
 private/
+
+# Hugging Face deploy bundle (data snapshot, staged Space)
+deploy/huggingface/.bundle/
