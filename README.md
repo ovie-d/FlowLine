@@ -1,6 +1,6 @@
 # Flowline Hazard Forecast
 
-**v2.0.0** · [Changelog](CHANGELOG.md) · [Model report](docs/MODEL_REPORT.md)
+**v2.1.0** · **[Try it online](@@SPACE_URL@@)** · [Changelog](CHANGELOG.md) · [Model report](docs/MODEL_REPORT.md)
 
 > *Their models tell you how strong the pipe is. Flowline tells you what kind of trouble
 > to prepare for, and who to send.*
@@ -19,9 +19,24 @@ equipment to have ready, and in an emergency, which crew base to send by real dr
 
 ---
 
+## Try it online (no install)
+
+Open **<@@SPACE_URL@@>**. It's the full app in your browser: forecast, evidence,
+readiness, emergency dispatch with real drive times, the maps, and the AI briefing.
+
+- **AI limit:** it's a free demo by a student team, so each visitor gets **3 AI prompts
+  per day**. A daily budget cap keeps costs predictable; everything else is unlimited.
+- **Private edits:** your crew-table edits and decisions stay private to your browser for
+  24 hours. Everyone else sees the clean demo data.
+- **Waking up:** it's hosted for free on Hugging Face Spaces. If nobody has visited for
+  two days it sleeps, and the first visit wakes it, which can take a minute or two.
+
+---
+
 ## Try it in 2 minutes
 
-Copy one line into a terminal. It checks what you have, downloads Flowline into
+Copy one line into a terminal. It checks what you have and **offers to install anything
+missing**: it shows the exact commands and asks first. Then it downloads Flowline into
 `~/flowline` and starts it at <http://localhost:3000>. **No keys or accounts needed.**
 
 **Linux / macOS** (Terminal):
@@ -49,7 +64,8 @@ Stop everything with `./stop.sh` (Windows: `stop.ps1`). Your data is kept.
 
 ### Prerequisites
 
-Install these yourself; the installer links to each one if it's missing.
+The installer offers to install any of these that are missing (with your permission;
+it may ask for your password). You can also install them yourself:
 
 | | Linux | macOS | Windows |
 |---|---|---|---|
@@ -82,10 +98,11 @@ About 5 GB free disk (packages, Docker images, database, routing data).
 
 ### No keys needed
 
-- **Map:** an interactive WebGL map on open basemaps (OpenFreeMap dark/light/streets, Esri
-  satellite imagery). Add a Mapbox token to `.env.local` to switch to Mapbox styles.
-- **AI readiness briefing:** off, with a message saying why. Add a `GEMINI_API_KEY` to
-  `.env` to turn it on.
+- **Map:** the installer asks for an optional Mapbox token (free at mapbox.com). Press
+  Enter to use the interactive open basemaps instead (OpenFreeMap dark/light/streets, Esri
+  satellite imagery); all map features work either way.
+- **AI readiness briefing:** works without a key, through the online demo (3 prompts per
+  day). Add your own `GEMINI_API_KEY` to `.env` for unlimited use.
 - **Everything else** (forecast, evidence, crews, dispatch, ranking) works without keys.
 
 ### Desktop app
@@ -227,6 +244,8 @@ Backend: `.env`
 | `OLLAMA_MODEL` / `OLLAMA_URL` | optional local fallback when Gemini is unreachable |
 | `OSRM_URL` | default `http://localhost:5000` |
 | `MAPBOX_TOKEN` | optional Directions fallback when OSRM is down; must not be URL-restricted |
+| `FLOWLINE_REMOTE_AI` | AI briefing/chat through the online demo when there's no local key (default: the Flowline demo; empty = off) |
+| `FLOWLINE_DEMO`, `AI_PROMPTS_PER_VISITOR`, `AI_DAILY_BUDGET_USD` | online-demo mode: per-visitor sandbox, 3 AI prompts per visitor per day, daily spend cap (website only) |
 
 Frontend: `.env.local`
 
@@ -292,6 +311,8 @@ on the 2022+ test set.
 - [`docs/research/TSB_NARRATIVES.md`](docs/research/TSB_NARRATIVES.md): whether public
   TSB narratives could be used.
 - [`desktop/README.md`](desktop/README.md): the desktop app.
+- [`deploy/huggingface/README.md`](deploy/huggingface/README.md): how the online demo is
+  built and deployed (one container on Hugging Face Spaces).
 - [`legacy/v1/`](legacy/v1/): the original v1 hackathon build.
 
 ---
