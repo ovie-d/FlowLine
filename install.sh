@@ -104,15 +104,15 @@ main() {
           pkgs+=(python3 python3-venv)
         elif grep -qi '^ID=ubuntu' /etc/os-release 2>/dev/null; then
           pkgs+=(software-properties-common)
-          plan+=("${SUDO}apt-get update && ${SUDO}apt-get install -y ${pkgs[*]}")
+          plan+=("${SUDO}apt-get update && ${SUDO}DEBIAN_FRONTEND=noninteractive apt-get install -y ${pkgs[*]}")
           pkgs=()
-          plan+=("${SUDO}add-apt-repository -y ppa:deadsnakes/ppa && ${SUDO}apt-get install -y python3.12 python3.12-venv   # Python 3.12")
+          plan+=("${SUDO}add-apt-repository -y ppa:deadsnakes/ppa && ${SUDO}DEBIAN_FRONTEND=noninteractive apt-get install -y python3.12 python3.12-venv   # Python 3.12")
         else
           manual+=("Python 3.11+ (your distribution's python3 is older): https://www.python.org/downloads/")
         fi
       fi
-      (( ${#pkgs[@]} )) && plan+=("${SUDO}apt-get update && ${SUDO}apt-get install -y ${pkgs[*]}")
-      (( need_node )) && plan+=("curl -fsSL https://deb.nodesource.com/setup_22.x | ${SUDO:+sudo -E }bash - && ${SUDO}apt-get install -y nodejs   # Node.js 22 (NodeSource)")
+      (( ${#pkgs[@]} )) && plan+=("${SUDO}apt-get update && ${SUDO}DEBIAN_FRONTEND=noninteractive apt-get install -y ${pkgs[*]}")
+      (( need_node )) && plan+=("curl -fsSL https://deb.nodesource.com/setup_22.x | ${SUDO:+sudo -E }bash - && ${SUDO}DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs   # Node.js 22 (NodeSource)")
       (( need_docker )) && plan+=("curl -fsSL https://get.docker.com | ${SUDO}sh && ${SUDO}usermod -aG docker $USER && ${SUDO}systemctl enable --now docker   # Docker Engine")
     elif [[ "$pm" == dnf ]]; then
       local pkgs=()
