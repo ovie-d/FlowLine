@@ -120,11 +120,59 @@ def _today() -> date:
     return datetime.now(UTC).date()
 
 
+SPEND_SCHEMA = """
+CREATE TABLE IF NOT EXISTS ai_spend (
+  day  date PRIMARY KEY,
+  usd  double precision NOT NULL DEFAULT 0
+);
+"""
+
+
+def record_spend(usd: float | None) -> None:
+    """Online demo: add an AI call's estimated cost to today's total in the database.
+
+    Kept in Postgres (not only the usage log) so the daily cap survives restarts of a
+    free server that sleeps when idle."""
+    if not enabled() or not usd:
+        return
+    from core.pg import try_connect
+
+    conn = try_connect()
+    if conn is None:
+        return
+    with conn:
+        conn.execute(SPEND_SCHEMA)
+        conn.execute(
+            "INSERT INTO ai_spend (day, usd) VALUES (%s, %s) "
+            "ON CONFLICT (day) DO UPDATE SET usd = ai_spend.usd + EXCLUDED.usd",
+            (_today(), float(usd)),
+        )
+
+
+def _spent_today_db() -> float | None:
+    from core.pg import try_connect
+
+    conn = try_connect()
+    if conn is None:
+        return None
+    with conn:
+        conn.execute(SPEND_SCHEMA)
+        row = conn.execute(
+            "SELECT usd FROM ai_spend WHERE day = %s", (_today(),)
+        ).fetchone()
+    return round(float(row["usd"]), 4) if row else 0.0
+
+
 def spent_today_usd(log_path: Path | None = None) -> float:
-    """Estimated AI spend today (UTC) from the usage log."""
+    """Estimated AI spend today (UTC): from the database in demo mode (survives
+    restarts), the higher of that and the usage log."""
     from core.agent.budget import USAGE_LOG
 
-    path = log_path or USAGE_LOG
+    db = _spent_today_db() if enabled() else None
+    return max(db or 0.0, _spent_today_log(log_path or USAGE_LOG))
+
+
+def _spent_today_log(path: Path) -> float:
     if not path.exists():
         return 0.0
     day = _today().isoformat()

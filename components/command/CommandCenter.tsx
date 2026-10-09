@@ -22,6 +22,7 @@ import type { HazardGroup } from "@/lib/hazards";
 import { AboutModelModal } from "./AboutModelModal";
 import { CrewEditorModal } from "./CrewEditorModal";
 import { DemoBanner } from "./DemoBanner";
+import { WakeNotice } from "./WakeNotice";
 import { EvidencePanel } from "./EvidencePanel";
 import { Footer } from "./Footer";
 import { ForecastPanel, PanelMessage } from "./ForecastPanel";
@@ -158,6 +159,7 @@ export function CommandCenter() {
         date={date}
         onDate={setDate}
       />
+      <WakeNotice waiting={corridorsQ.isPending} />
       <DemoBanner />
       {backendDown && (
         <div role="alert" className="border-b border-critical/50 bg-critical/10 px-4 py-1.5 text-[12px]">

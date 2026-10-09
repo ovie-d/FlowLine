@@ -8,6 +8,14 @@ const apiProxy = process.env.FLOWLINE_API_PROXY?.replace(/\/$/, "");
 const nextConfig: NextConfig = {
   devIndicators: false,
   allowedDevOrigins: ["127.0.0.1"],
+  // MapLibre's worker files are read from node_modules by app/maplibre/[file]/route.ts;
+  // make sure serverless hosts (e.g. Vercel) bundle them with that route.
+  outputFileTracingIncludes: {
+    "/maplibre/*": [
+      "./node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs",
+      "./node_modules/maplibre-gl/dist/maplibre-gl-shared.mjs",
+    ],
+  },
   async rewrites() {
     return apiProxy ? [{ source: "/api/:path*", destination: `${apiProxy}/:path*` }] : [];
   },

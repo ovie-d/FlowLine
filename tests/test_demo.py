@@ -38,7 +38,7 @@ def demo_api(pg_env: str, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     with psycopg.connect(pg_env, row_factory=psycopg.rows.dict_row) as conn:
         conn.execute(
             "TRUNCATE crew_types, hazard_crew_map, crew_bases, crew_map_overrides, "
-            "decision_log, ai_quota CASCADE"
+            "decision_log, ai_quota, ai_spend CASCADE"
         )
         load_postgres.seed_crews(conn)
         conn.commit()
@@ -90,11 +90,22 @@ def test_shared_ip_cap_and_missing_visitor(demo_api: TestClient, monkeypatch) ->
 
 
 def test_daily_budget_cap_stops_everyone(demo_api: TestClient) -> None:
-    _log_spend(1.0)
+    demo.record_spend(0.6)
+    assert (
+        demo_api.get("/demo/status", headers=A).json()["daily_budget_reached"] is False
+    )
+    demo.record_spend(0.4)  # kept in the database: survives a server restart
     status = demo_api.get("/demo/status", headers=A).json()
     assert status["daily_budget_reached"] is True and status["remaining"] == 0
     out = demo_api.post("/briefing", json=BRIEF, headers=A).json()
     assert out["error"] is True and "budget" in out["reason"]
+
+
+def test_usage_log_spend_also_counts(demo_api: TestClient) -> None:
+    _log_spend(1.0)  # e.g. calls made before the database counter existed
+    assert (
+        demo_api.get("/demo/status", headers=A).json()["daily_budget_reached"] is True
+    )
 
 
 def test_failed_ai_call_gives_the_prompt_back(demo_api, monkeypatch) -> None:

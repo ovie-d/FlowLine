@@ -186,6 +186,10 @@ CREATE TABLE IF NOT EXISTS crew_map_overrides (
   updated_at          timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (visitor_id, hazard_group)
 );
+CREATE TABLE IF NOT EXISTS ai_spend (
+  day                 date PRIMARY KEY,
+  usd                 double precision NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS ai_quota (
   day                 date NOT NULL,
   key                 text NOT NULL,
