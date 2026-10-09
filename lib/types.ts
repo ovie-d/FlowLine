@@ -116,6 +116,10 @@ export type AgentResponse = {
   answer: string;
   tool_calls: AgentToolCall[];
   error?: boolean;
+  /** Why the agent couldn't answer (e.g. the online demo's daily AI limit). */
+  reason?: string;
+  /** Online demo: AI prompts this visitor has left today. */
+  quota?: { limit: number; remaining: number; daily_budget_reached: boolean };
 };
 
 export type Decision = {

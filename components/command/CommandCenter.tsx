@@ -1,6 +1,6 @@
 "use client";
 
-import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { DecisionLog } from "@/components/DecisionLog";
@@ -21,6 +21,7 @@ import type { Corridor, SimilarIncident } from "@/lib/forecastTypes";
 import type { HazardGroup } from "@/lib/hazards";
 import { AboutModelModal } from "./AboutModelModal";
 import { CrewEditorModal } from "./CrewEditorModal";
+import { DemoBanner } from "./DemoBanner";
 import { EvidencePanel } from "./EvidencePanel";
 import { Footer } from "./Footer";
 import { ForecastPanel, PanelMessage } from "./ForecastPanel";
@@ -89,9 +90,13 @@ export function CommandCenter() {
     placeholderData: keepPreviousData,
   });
 
+  const queryClient = useQueryClient();
   const briefing = useMutation({
     mutationFn: () => getBriefing(where!, start, operator),
-    onSettled: () => void logAgentUsage("AI usage after briefing"),
+    onSettled: () => {
+      void logAgentUsage("AI usage after briefing");
+      void queryClient.invalidateQueries({ queryKey: ["agent-status"] });
+    },
   });
 
   // Dev-console usage counter (budget guard), once per page load.
@@ -153,6 +158,7 @@ export function CommandCenter() {
         date={date}
         onDate={setDate}
       />
+      <DemoBanner />
       {backendDown && (
         <div role="alert" className="border-b border-critical/50 bg-critical/10 px-4 py-1.5 text-[12px]">
           Backend unreachable — start the API (uvicorn api.main:app) and the database (docker compose up -d).

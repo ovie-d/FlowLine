@@ -4,6 +4,7 @@ import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-quer
 import { useEffect, useMemo, useState } from "react";
 import {
   askAgent,
+  postDecision,
   getBaseline,
   getCorridor,
   getDecisions,
@@ -12,7 +13,7 @@ import {
   getTriage,
   resetAgent,
 } from "@/lib/api";
-import { policyLabel } from "@/lib/format";
+import { asDisplayText, policyLabel } from "@/lib/format";
 import type { TriageAction, TriageDraft } from "@/lib/types";
 import { AgentSidebar } from "@/components/AgentSidebar";
 import type { ChatMessage } from "@/components/ChatThread";
@@ -198,7 +199,7 @@ export default function RankingView() {
           id: crypto.randomUUID(),
           role: "agent",
           text: res.error
-            ? res.answer || "Agent unavailable. Rankings and triage still work."
+            ? res.reason || res.answer || "Agent unavailable. Rankings and triage still work."
             : res.answer,
           tool_calls: res.tool_calls,
           error: !!res.error,
@@ -224,11 +225,25 @@ export default function RankingView() {
     }
   }
 
+  // Approving a draft records the decision directly: instant, and it doesn't use an AI
+  // prompt (the chat can still log decisions when asked).
   async function approveP1(corridor: string) {
     setApproving(corridor);
+    const draft = escalateDrafts.find((d) => d.corridor === corridor);
     try {
-      await sendQuestion(`Escalate ${corridor}, P1`);
+      await postDecision({
+        corridor,
+        action: "escalate",
+        priority: "P1",
+        reason: (draft && asDisplayText(draft.reason)) || "Approved escalate draft.",
+        policy: high === 1 ? { count_only: true } : { high },
+      });
       await queryClient.invalidateQueries({ queryKey: ["decisions"] });
+    } catch {
+      setMessages((m) => [
+        ...m,
+        { id: crypto.randomUUID(), role: "agent", text: `Could not record the decision for ${corridor}.`, error: true },
+      ]);
     } finally {
       setApproving(null);
     }

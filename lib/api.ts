@@ -7,11 +7,12 @@ import type {
   RankingRow,
   Triage,
 } from "./types";
+import { visitorHeaders } from "./visitor";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`);
+  const res = await fetch(`${BASE}${path}`, { headers: visitorHeaders() });
   if (!res.ok) {
     throw new Error(`${res.status} ${res.statusText} for ${path}`);
   }
@@ -21,7 +22,7 @@ async function get<T>(path: string): Promise<T> {
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...visitorHeaders() },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -50,6 +51,15 @@ export const getImprovement = (high: number) =>
 export const getImprovementRound = () => get<Improvement>(`/improvement`);
 
 export const getDecisions = () => get<Decision[]>(`/decisions`);
+
+/** Record a planner decision directly (the Approve buttons; no AI call). */
+export const postDecision = (decision: {
+  corridor: string;
+  action: "inspect" | "escalate" | "defer";
+  priority: "P1" | "P2" | "P3";
+  reason?: string;
+  policy?: Record<string, number | boolean>;
+}) => post<Decision>(`/decisions`, decision);
 
 export const askAgent = (
   session_id: string,

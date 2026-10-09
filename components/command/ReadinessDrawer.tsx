@@ -168,8 +168,14 @@ function BriefingCard({ agent, briefing, loading, onBriefing, canBrief }: {
   agent: AgentStatus | null; briefing: BriefingResult | null; loading: boolean;
   onBriefing: () => void; canBrief: boolean;
 }) {
-  const disabled = !agent?.available || !canBrief || loading;
+  // Online demo: a few AI prompts per visitor per day (the latest count wins).
+  const quota = briefing?.quota ?? agent?.quota ?? null;
+  const outOfPrompts = !!quota && quota.remaining <= 0;
+  const disabled = !agent?.available || !canBrief || loading || outOfPrompts;
   const reason = !agent ? "Checking AI availability…" : !agent.available ? agent.reason ?? "AI unavailable"
+    : outOfPrompts ? (quota.daily_budget_reached
+      ? "Today's AI budget for the online demo is used up. Please try again tomorrow; everything else works."
+      : `You've used your ${quota.limit} AI prompts for today. They reset at midnight UTC.`)
     : !canBrief ? "Forecast an area first." : undefined;
   return (
     <Card title="Readiness briefing" aside={agent?.available ? (
@@ -192,6 +198,14 @@ function BriefingCard({ agent, briefing, loading, onBriefing, canBrief }: {
         </button>
       </span>
       {reason && <p id="brief-reason" className="mt-1.5 text-[11px] text-muted">{reason}</p>}
+      {quota && !outOfPrompts && (
+        <p className="mt-1.5 text-[11px] text-muted">
+          <InfoTip tip={quota.note} align="start">
+            <span>AI prompts left today: <span className="font-mono text-fg">{quota.remaining}</span> of {quota.limit}</span>
+          </InfoTip>
+          {agent?.via_online_demo && " · via the Flowline online demo"}
+        </p>
+      )}
       {briefing && (
         <div className="mt-2 text-[12px]">
           {briefing.error ? <PanelMessage tone="error" text={briefing.reason ?? briefing.answer} /> : (

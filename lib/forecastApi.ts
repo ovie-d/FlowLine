@@ -7,6 +7,7 @@ import type {
   Corridor,
   CrewsPayload,
   CrossingsLayer,
+  DemoStatus,
   DispatchResult,
   Forecast,
   IncidentDetail,
@@ -15,6 +16,7 @@ import type {
   SimilarResult,
   WashoutInsight,
 } from "./forecastTypes";
+import { visitorHeaders } from "./visitor";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
@@ -30,7 +32,10 @@ export class ApiError extends Error {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${BASE}${path}`, init);
+    res = await fetch(`${BASE}${path}`, {
+      ...init,
+      headers: { ...(init?.headers as Record<string, string> | undefined), ...visitorHeaders() },
+    });
   } catch {
     throw new ApiError(`Backend unreachable at ${BASE}`, 0);
   }
@@ -94,6 +99,7 @@ export const getCorridors = () => request<Corridor[]>("/corridors");
 export const getIncidentPoints = () =>
   request<GeoJSON.FeatureCollection<GeoJSON.Point>>("/map/incidents");
 export const getPipelines = () => request<GeoJSON.FeatureCollection>("/map/pipelines");
+export const getDemoStatus = () => request<DemoStatus>("/demo/status");
 export const getCrossings = () => request<CrossingsLayer>("/map/crossings");
 export const getIncidentDetail = (id: string) =>
   request<IncidentDetail>(`/map/incidents/${encodeURIComponent(id)}`);

@@ -494,6 +494,8 @@ def agent_status() -> dict[str, Any]:
 @router.get("/agent/usage")
 def agent_usage() -> dict[str, Any]:
     """Token usage and estimated spend from logs/agent_usage.jsonl (dev-console counter)."""
+    if demo.enabled():
+        return {"hidden": "Usage details are private on the online demo."}
     return usage_summary()
 
 
