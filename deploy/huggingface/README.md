@@ -1,5 +1,10 @@
 # Flowline online demo (Hugging Face Spaces)
 
+> **Note (October 2026):** Hugging Face now requires a PRO subscription for Docker Spaces.
+> The public demo therefore runs on free hosting instead (see [`../free/`](../free/)). This
+> folder still builds the one-container version, for Spaces with PRO or any Docker host,
+> and `deploy/free/tunnel.sh` uses it for the laptop backup.
+
 The online demo is the full app in one Docker container on a free Hugging Face Space:
 PostgreSQL + PostGIS + pgvector, the OSRM router, the FastAPI backend and the Next.js app
 on port 7860. The database snapshot is restored and the routing graph unpacked **at build

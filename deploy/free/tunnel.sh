@@ -18,7 +18,7 @@ case "${1:-start}" in
     .venv/bin/python deploy/huggingface/publish.py local bundle
     .venv/bin/python -c "import sys; sys.path.insert(0, 'deploy/huggingface'); import publish; publish.stage_space('local')"
     (cd deploy/huggingface/.bundle && python3 -m http.server 8765 --bind 127.0.0.1 >/dev/null 2>&1 & echo $! > /tmp/flowline-bundle-http.pid)
-    trap 'kill "$(cat /tmp/flowline-bundle-http.pid)" 2>/dev/null' EXIT
+    trap 'kill "$(cat /tmp/flowline-bundle-http.pid)" 2>/dev/null || true' EXIT
     dk "docker build --network host --build-arg FLOWLINE_DATA_URL=http://127.0.0.1:8765 -t $IMAGE deploy/huggingface/.bundle/space"
     ;;
   stop)

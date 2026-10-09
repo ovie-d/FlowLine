@@ -9,12 +9,17 @@ the reference build.
 
 ### Added
 
-- **Online demo** on Hugging Face Spaces:
-  - The full app in one container (database, routing, API, web), starting in seconds.
+- **Online demo**, hosted for free: Vercel for the website, Render for the API, Neon for
+  the database, and the public OSRM server for routing.
+  - The same app also builds as one container (database, own router, API, web) for
+    Docker hosts or Hugging Face Spaces with PRO, and runs as a laptop backup through a
+    free Cloudflare tunnel.
   - Each visitor gets 3 AI prompts per day, with a hard daily AI budget, and a banner that
     explains why: we're students on a small budget.
   - Crew-table edits and decisions stay private to each visitor for 24 hours.
-  - `deploy/huggingface/` builds and publishes it.
+  - The daily AI spend is kept in the database, so the cap survives the free server
+    sleeping.
+  - `deploy/free/` and `deploy/huggingface/` build and publish it.
 - **AI without a key:** local installs without a Gemini key use the online demo's AI,
   within the same daily limit. Your own key always takes precedence.
 - **The installer offers to install missing prerequisites** (git, Node.js, Python,

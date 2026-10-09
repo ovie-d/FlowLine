@@ -1,6 +1,6 @@
 # Flowline Hazard Forecast
 
-**v2.1.0** · **[Try it online](https://a112358-flowline.hf.space)** · [Changelog](CHANGELOG.md) · [Model report](docs/MODEL_REPORT.md)
+**v2.1.0** · **[Try it online](https://flowline-web-gamma.vercel.app)** · [Changelog](CHANGELOG.md) · [Model report](docs/MODEL_REPORT.md)
 
 > *Their models tell you how strong the pipe is. Flowline tells you what kind of trouble
 > to prepare for, and who to send.*
@@ -21,15 +21,18 @@ equipment to have ready, and in an emergency, which crew base to send by real dr
 
 ## Try it online (no install)
 
-Open **<https://a112358-flowline.hf.space>**. It's the full app in your browser: forecast, evidence,
+Open **<https://flowline-web-gamma.vercel.app>**. It's the full app in your browser: forecast, evidence,
 readiness, emergency dispatch with real drive times, the maps, and the AI briefing.
 
 - **AI limit:** it's a free demo by a student team, so each visitor gets **3 AI prompts
   per day**. A daily budget cap keeps costs predictable; everything else is unlimited.
 - **Private edits:** your crew-table edits and decisions stay private to your browser for
   24 hours. Everyone else sees the clean demo data.
-- **Waking up:** it's hosted for free on Hugging Face Spaces. If nobody has visited for
-  two days it sleeps, and the first visit wakes it, which can take a minute or two.
+- **Waking up:** it's hosted for free (Vercel for the website, Render for the API, Neon
+  for the database). After 15 minutes without visitors the API sleeps, and the next visit
+  wakes it in about a minute; the page says so while it waits.
+- **Routing:** drive times come from the public OSRM server (the same routing engine a
+  local install runs on its own).
 
 ---
 
@@ -311,8 +314,10 @@ on the 2022+ test set.
 - [`docs/research/TSB_NARRATIVES.md`](docs/research/TSB_NARRATIVES.md): whether public
   TSB narratives could be used.
 - [`desktop/README.md`](desktop/README.md): the desktop app.
-- [`deploy/huggingface/README.md`](deploy/huggingface/README.md): how the online demo is
-  built and deployed (one container on Hugging Face Spaces).
+- [`deploy/free/README.md`](deploy/free/README.md): how the online demo is hosted for free
+  (Vercel + Render + Neon) and the laptop backup (a free Cloudflare tunnel).
+- [`deploy/huggingface/README.md`](deploy/huggingface/README.md): the same app as one
+  container (Hugging Face Spaces with PRO, or any Docker host).
 - [`legacy/v1/`](legacy/v1/): the original v1 hackathon build.
 
 ---
